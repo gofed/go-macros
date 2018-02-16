@@ -1,0 +1,155 @@
+# Copyright (c) 2015-2018 Jakub Cajka <jcajka@redhat.com>,
+#                         Jan Chaloupka <jchaloup@redhat.com>,
+#                         Nicolas Mailhot <nim@fedoraproject.org>
+# This file is distributed under the terms of GNU GPL license version 3, or
+# any later version.
+
+# This file contains macros for building projects in golang for packages
+# with golang compiler or gcc-go compiler based on an architecture.
+# Golang is primarly for primary architectures, gcc-go for secondary.
+#
+# This file provides only macros and must not use any other package except
+# redhat-rpm-macros.
+
+# Define arches for PA and SA
+%golang_arches   %{ix86} x86_64 %{arm} aarch64 ppc64le s390x
+%gccgo_arches    %{mips}
+%go_arches       %{golang_arches} %{gccgo_arches}
+
+# Where to set GOPATH for builds
+%gopath          %{_datadir}/gocode
+
+# Define go_compilers macro to signal go-compiler package is available
+%go_compiler     1
+
+# Sanitize a Go import path that can then serve as rpm package name
+# Mandatory parameter: a Go import path
+%gorpmname() %{lua:
+local goname = rpm.expand("%1")
+-- add a golang prefix and lowercase
+goname       = string.lower("golang-" .. goname .. "/")
+-- replace various separators rpm does not like with -
+-- special-case x.y.z number-strings as that’s an exception in our naming
+-- guidelines
+goname       = string.gsub(goname, "^([^/]+)%.([^%./]+)/", "%1/")
+goname       = string.gsub(goname, "(%d)%.(%d)",           "%1|%2")
+goname       = string.gsub(goname, "[%._/%-]+",            "-")
+-- Tokenize along - separators and remove duplicates to avoid
+-- golang-foo-foo-bar-foo names
+local result = ""
+local tokens = {}
+tokens["go"]     = true
+tokens["git"]    = true
+for token in string.gmatch(goname, "[^%-]+") do
+   if not tokens[token] then
+      result = result .. "-" .. token
+      tokens[token] = true
+   end
+end
+-- reassemble the string, restore x.y.z runs, convert the vx.y.z
+-- Go convention to x.y.z as prefered in rpm naming
+result = string.gsub(result, "^-", "")
+result = string.gsub(result, "|", ".")
+result = string.gsub(result, "%-v([%.%d])", "%1")
+print(result)
+}
+
+# Map Go information to rpm metadata. This macro will compute default spec
+# variable values.
+#
+# The following spec variable MUST be set before calling the macro:
+#
+#   goipath   the packaged Go project import path
+#
+# The following spec variables SHOULD be set before calling the macro:
+#
+#   forgeurl  the project url on the forge, strongly recommended, if it can not
+#             be deduced from goipath; alternatively, use -u <url>
+#   Version   if applicable, set it with Version: <version>
+#   tag       if applicable
+#   commit    if applicable
+#
+# The macro will attempt to compute and set the following variables if they are
+# not already set by the packager:
+#
+#   goname         an rpm-compatible package name derived from goipath
+#   gosource       an URL that can be used as SourceX: value
+#   gourl          an URL that can be used as URL: value
+#
+# It will delegate processing to the forgemeta macro for:
+#
+#   forgesource    an URL that can be used as SourceX: value
+#   forgesetupargs the correct arguments to pass to %setup for this source
+#                  used by %forgesetup and %forgeautosetup
+#   archivename    the source archive filename, without extentions
+#   archiveext     the source archive filename extensions, without leading dot
+#   archiveurl     the url that can be used to download the source archive,
+#                  without renaming
+#   scm            the scm type, when packaging code snapshots: commits or tags
+#
+# If the macro is unable to parse your forgeurl value set at least archivename
+# and archiveurl before calling it.
+#
+# Most of the computed variables are both overridable and optional. However,
+# the macro WILL REDEFINE %{dist} when packaging a snapshot (commit or tag).
+# The previous %{dist} value will be lost. Don’t call the macro if you don’t
+# wish %{dist} to be changed.
+#
+# Optional parameters:
+#   -u <url>  Ignore forgeurl even if it exists and use <url> instead. Note
+#             that the macro will still end up setting <url> as the forgeurl
+#             spec variable if it manages to parse it.
+#   -s  Silently ignore problems in forgeurl, use it if it can be parsed,
+#       ignore it otherwise.
+#   -p  Restore problem handling, override -s.
+#   -v  Be verbose and print every spec variable the macro sets.
+#   -i  Print some info about the state of spec variables the macro may use or
+#       set at the end of the processing.
+%gometa(u:spvi) %{expand:%{lua:
+local forgeurl    = rpm.expand("%{?-u*}")
+if (forgeurl == "") then
+  forgeurl        = rpm.expand("%{?forgeurl}")
+end
+-- Be explicit about the spec variables we’re setting
+local function explicitset(rpmvariable,value)
+  rpm.define(rpmvariable .. " " .. value)
+  if (rpm.expand("%{?-v}") ~= "") then
+    rpm.expand("%{echo:Setting %%{" .. rpmvariable .. "} = " .. value .. "}")
+  end
+end
+-- Never ever stomp on a spec variable the packager already set
+local function safeset(rpmvariable,value)
+  if (rpm.expand("%{?" .. rpmvariable .. "}") == "") then
+    explicitset(rpmvariable,value)
+  end
+end
+-- All the Go packaging automation relies on goipath being set
+local goipath = rpm.expand("%{?goipath}")
+if (goipath == "") then
+  rpm.expand("%{error:Please set the Go import path in the “goipath” variable before calling “gometa”!}")
+end
+-- Compute and set spec variables
+if (forgeurl ~= "") then
+  rpm.expand("%forgemeta %{?-v} %{?-i} %{?-s} %{?-p} -u " .. forgeurl .. "\\n")
+  safeset("gourl", forgeurl)
+else
+  safeset("gourl", "https://" .. goipath)
+  rpm.expand("%forgemeta %{?-v} %{?-i} -s     %{?-p} -u %{gourl}\\n")
+end
+if (rpm.expand("%{?forgesource}") ~= "") then
+  safeset("gosource", "%{forgesource}")
+else
+  safeset("gosource", "%{gourl}/%{archivename}.%{archiveext}")
+end
+safeset("goname", "%gorpmname %{goipath}")
+-- Final spec variable summary if the macro was called with -i
+if (rpm.expand("%{?-i}") ~= "") then
+  rpm.expand("%{echo:Go-specific packaging variables}")
+  rpm.expand("%{echo:  goipath:         %{?goipath}}")
+  rpm.expand("%{echo:  goname:          %{?goname}}")
+  rpm.expand("%{echo:  gourl:           %{?gourl}}")
+  rpm.expand("%{echo:  gosource:        %{?gosource}}")
+end}
+BuildRequires: go-rpm-macros
+ExclusiveArch: %{go_arches}
+}

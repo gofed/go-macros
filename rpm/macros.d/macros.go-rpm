@@ -1,0 +1,129 @@
+# Copyright (c) 2015-2018 Jan Chaloupka <jchaloup@redhat.com>,
+#                         Nicolas Mailhot <nim@fedoraproject.org>
+# This file is distributed under the terms of GNU GPL license version 3, or
+# any later version.
+#
+# This file contains macros needed at %%build %%install and %%check
+# stage by Golang packages.
+# The macros necessary at %%setup and srpm stage are in the sister file
+# macros.go-srpm
+
+# find directory filter to remove elements usually not needed to build other Go projects
+%gofinddirfilter  -regextype egrep \! -iregex '.*/(.*[._-])?(example(s)?|test([._-])?data)/.*' \! -ipath '*/vendor/*' \! -iregex  '.*/[._].*'
+
+# find filter to identify resources usually needed to build other Go projects
+%gofindfilter     -regextype egrep -iregex '(.*\\.(go|c|h|s|tmpl|proto)|./Gopkg\\.(toml|lock))' \! -iname '*_test.go' \! -iregex  '.*/(.*[._-])?test(([._-])?case)?(s)?/.*' %{gofinddirfilter}
+
+# find filter to identify unit tests
+%gofindtestfilter                  -iname '*.go' %{gofinddirfilter}
+
+# Collect md files spread in subdirectories
+%gocollectmd %{expand:
+for mdfile in $(find . -iname '*.md' %{gofinddirfilter}) ; do
+  suffix=$(dirname $mdfile | sed 's+^\./++g' | sed 's+/+·+g')
+  if [[ $suffix != '.' ]] ; then
+    cp -p "$mdfile" "$(echo $(basename $mdfile) | sed 's+\.md$++g')·${suffix}.md"
+  fi
+done}
+
+# Try to install Go package files in sensible locations, with strict directory
+# ownership as required by Go autodeps
+#
+# %%goinstall will generate a file list that can be used in a %%files spec
+# section. The default file list name is devel.file-list. It can be overriden
+# by passing the -f argument to the macro with another filename.
+#
+# %%goinstall recognizes only Go language native files and directories.
+# In case a file with non-native Go extension is required, you can pass
+# the -e argument with a comma separated list of extensions. Example:
+# %%goinstall -i .tmpl,.proto
+#
+# When invoked several times it will append to existing file lists not create
+# a new one.
+#
+# When invoked several times with different file list names, it will attribute
+# directories to the first file list that makes use of them only. This is
+# intentional, to avoid triggering Go autodeps on the same Go directory in
+# different subpackages. Therefore, splitting code in several subpackages
+# requires careful though about %%goinstall invocation order.
+%goinstall(f:e:i:) %{expand:
+%global file_list %{?-f*}%{!?-f*:devel.file-list}
+%global exts_list %{?-e*}%{!?-e*:}
+%global ipprefix %{?-i*}%{!?-i*:%{gobaseipath}}
+install -m 0755 -vd "%{buildroot}%{gopath}/src"
+# create symlink
+install -m 0755 -vd "$(dirname $PWD/_build/src/%{ipprefix})"
+ln -fs "$PWD" "$PWD/_build/src/%{ipprefix}"
+for file in $(\
+GOPATH=$PWD/_build golist --to-install --package-path %{ipprefix} --with-extensions "%{exts_list}"); do
+  file="${file##$PWD/_build/src/%{ipprefix}/}"
+  [[ -d "${file}" && ! -L "${file}" ]] && srcdir="${file}" || srcdir=$(dirname "${file}")
+  destdir="%{buildroot}%{gopath}/src/%{ipprefix}/${srcdir}"
+  destdir="${destdir%/.}"
+  dir="${destdir}"
+  dirs=(%{buildroot}%{gopath}/src/%{ipprefix})
+  while [[ ! -e "${dir}" ]] && [[ "${dir##%{buildroot}%{gopath}/src/}" != "%{ipprefix}" ]] ; do
+    dirs=("$dir" "${dirs[@]}")
+    dir=$(dirname "${dir}")
+  done
+  for dir in "${dirs[@]}" ; do
+    install -m 0755 -vd "${dir}"
+    if $(echo "${dir}" | grep -q "^%{buildroot}%{gopath}/src/%{ipprefix}") ; then
+      touch -r             ".${dir#%{buildroot}%{gopath}/src/%{ipprefix}}" "${dir}"
+    fi
+    echo "%%dir \"${dir#%{buildroot}}\"" >> %{file_list}
+  done
+  if [[ -L "$file" ]] ; then
+    ln -s $(readlink "${file}") "${destdir}/$(basename ${file})"
+    touch -h      -r "${file}"  "${destdir}/$(basename ${file})"
+  fi
+  [[ -f "$file" && ! -L "$file" ]] && install -m 0644 -vp  "${file}" "${destdir}/"
+  [[ -f "$file" ||   -L "$file" ]] && echo "%%{gopath}/src/%%{ipprefix}/${file}" >> %{file_list} || :
+done
+sort -u -o %{file_list} %{file_list}
+}
+
+# Create a local Go build root
+# Useful in %%build and %%check
+%gobuildroot() %{expand:
+  GO_BUILD_PATH="$PWD/_build"
+  %global gobuildpath "$GO_BUILD_PATH"
+  install -m 0755 -vd "$(dirname %{gobuildpath}/src/%{gobaseipath})"
+  ln -fs "$PWD" "%{gobuildpath}/src/%{gobaseipath}"
+  cd "%{gobuildpath}/src/%{gobaseipath}"
+  install -m 0755 -vd _bin
+  export GOPATH="%{gobuildpath}:%{gopath}"
+  export LDFLAGS="${LDFLAGS:-}%{?commit: -X %{gobaseipath}/version.commit=%{commit}}%{?tag: -X %{gobaseipath}/version.tag=%{tag}}%{?version: -X %{gobaseipath}/version=%{version}}"
+}
+
+# Run %%{gotest} on all subdirectories except for those provided in parameters.
+# THIS MACRO IS OPT-OUT.
+# It only allows excluding specific subdirectories from the test run, with the
+# following syntax :
+#  — to exclude the tests in a specific subdirectory, not recursively:
+#    pass it as parameter. Use
+#    Example:
+#      %gochecks subdir1 sub2/dir
+#  — to exclude the tests in a whole subtree:
+#    use the -R switch with the subtree roots as argument.
+#    Example:
+#      %gochecks -R sub1/tree/root,sub2/fixtures
+#  — to exclude using free-form egrep-style regexes:
+#    use the -r switch with the regex as argument.
+#    Example:
+#      %gochecks -r '.*/(.*[._-])?test(([._-])?case)?(s)?/.*'
+#  — you can mix and match:
+#      %gochecks subdir1 -R sub/tree/root sub/dir2 -r './testcase(s)?/.*'
+#  — arguments containing spaces or escaped quotes are not supported
+%gochecks(R:r:) %{expand:
+ignore_trees='%{-R*}'
+ignore_regex='%{-r*}'
+ignore_dirs=$(echo %* | sed "s/  */,/g")
+# search in the buildroot first, then user specified, then the default gopath
+export GOPATH=%{buildroot}%{gopath}${GOPATH+:${GOPATH}}:%{gopath}
+for dir in $(golist --package-path %{gobaseipath} --provided --tests --ignore-dirs "${ignore_dirs}" --ignore-trees "${ignore_trees}" --ignore-regex "${ignore_regex}" ); do
+  pushd "%{buildroot}%{gopath}/src/${dir}" >/dev/null
+  %{gotest}
+  popd
+done
+}

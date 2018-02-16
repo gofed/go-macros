@@ -1,0 +1,65 @@
+#!/bin/sh
+
+usage() {
+cat >&2 << EOF_USAGE
+Usage: $0 -g <go import path> [-p <prefix>] [-G <go path>] [-v <version string>]
+<go import path>   the Go import path of the target package
+<prefix>:          an eventual prefix path such as %{buildroot}
+<go path>:         the root of the Go source tree
+<version string>:  tag the provides with the <version string>
+
+EOF_USAGE
+exit 1
+}
+
+version=''
+prefix=''
+gopath=/usr/share/gocode
+ignore=''
+goipps=''
+
+while [ $# -gt 0 ] ; do
+  case $1 in
+    -h|--help)    usage ;;
+    -g|--goipps)  goipps="$2" ; shift;;
+    -p|--prefix)  prefix=$(realpath -sm "$2") ; shift;;
+    -v|--version) version="$2" ; shift;;
+    -i|--ignore)  ignore="$2" ; shift;;
+    (--)          shift; break;;
+    (-*)          echo "$0: error - unrecognized option $1" >&2; exit 3;;
+    (*)           break;;
+  esac
+  shift
+done
+
+# If the go import path prefixes are not set => do nothing
+[[ -z ${goipps} ]] && exit 0
+
+provides() {
+ipprefix=${1}
+
+ignore_ipps=$(echo ${goipps} | tr ':' '\n' | grep -v "^${ipprefix}$" | tr '\n' ',')
+ignore_dirs=$(echo ${ignore_ipps}${ignore} | sed "s/,$//")
+
+for provides in $(\
+	GOPATH=${prefix}/usr/share/gocode \
+	golist \
+	--provided \
+	--package-path ${ipprefix} \
+	--ignore-dirs "${ignore_dirs}" \
+); do
+	echo "golang($provides) = ${version}"
+done
+}
+
+# More than one import path prefixed can be shipeed
+ipprefixes=($(echo "${goipps}" | tr ':' '\n'))
+
+while read dir; do
+	for ipprefix in ${ipprefixes[@]}; do
+    # Process only the top level directory
+		if [ "${dir##${prefix}/usr/share/gocode/src/}" == "${ipprefix}" ]; then
+			provides ${ipprefix}
+		fi
+	done
+done
