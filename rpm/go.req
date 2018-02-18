@@ -13,15 +13,19 @@ exit 1
 
 prefix=''
 gopath=/usr/share/gocode
-ignore=''
 goipps=''
+ignore_dirs=''
+ignore_trees=''
+ignore_regex=''
 
 while [ $# -gt 0 ] ; do
   case $1 in
     -h|--help)    usage ;;
     -g|--goipps)  goipps="$2" ; shift;;
     -p|--prefix)  prefix=$(realpath -sm "$2") ; shift;;
-    -i|--ignore)  ignore="$2" ; shift;;
+    --ignore-dirs)   ignore_dirs="$2" ; shift;;
+    --ignore-trees)  ignore_trees="$2" ; shift;;
+    --ignore-regex)  ignore_regex="$2" ; shift;;
     (--)          shift; break;;
     (-*)          echo "$0: error - unrecognized option $1" >&2; exit 3;;
     (*)           break;;
@@ -44,7 +48,9 @@ for dep in $(\
 	--imported \
 	--package-path ${ipprefix} \
 	--skip-self \
-	--ignore-dirs "${ignore_dirs}" \
+	--ignore-dirs  "${ignore_dirs}" \
+	--ignore-trees "${ignore_trees}" \
+	--ignore-regex "${ignore_regex}" \
 ); do
 	echo "golang($dep)"
 done

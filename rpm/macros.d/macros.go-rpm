@@ -36,7 +36,7 @@ done}
 # %%goinstall recognizes only Go language native files and directories.
 # In case a file with non-native Go extension is required, you can pass
 # the -e argument with a comma separated list of extensions. Example:
-# %%goinstall -i .tmpl,.proto
+# %%goinstall -e .tmpl,.proto
 #
 # When invoked several times it will append to existing file lists not create
 # a new one.
@@ -46,42 +46,7 @@ done}
 # intentional, to avoid triggering Go autodeps on the same Go directory in
 # different subpackages. Therefore, splitting code in several subpackages
 # requires careful though about %%goinstall invocation order.
-%goinstall(f:e:i:) %{expand:
-%global file_list %{?-f*}%{!?-f*:devel.file-list}
-%global exts_list %{?-e*}%{!?-e*:}
-%global ipprefix %{?-i*}%{!?-i*:%{gobaseipath}}
-install -m 0755 -vd "%{buildroot}%{gopath}/src"
-# create symlink
-install -m 0755 -vd "$(dirname $PWD/_build/src/%{ipprefix})"
-ln -fs "$PWD" "$PWD/_build/src/%{ipprefix}"
-for file in $(\
-GOPATH=$PWD/_build golist --to-install --package-path %{ipprefix} --with-extensions "%{exts_list}"); do
-  file="${file##$PWD/_build/src/%{ipprefix}/}"
-  [[ -d "${file}" && ! -L "${file}" ]] && srcdir="${file}" || srcdir=$(dirname "${file}")
-  destdir="%{buildroot}%{gopath}/src/%{ipprefix}/${srcdir}"
-  destdir="${destdir%/.}"
-  dir="${destdir}"
-  dirs=(%{buildroot}%{gopath}/src/%{ipprefix})
-  while [[ ! -e "${dir}" ]] && [[ "${dir##%{buildroot}%{gopath}/src/}" != "%{ipprefix}" ]] ; do
-    dirs=("$dir" "${dirs[@]}")
-    dir=$(dirname "${dir}")
-  done
-  for dir in "${dirs[@]}" ; do
-    install -m 0755 -vd "${dir}"
-    if $(echo "${dir}" | grep -q "^%{buildroot}%{gopath}/src/%{ipprefix}") ; then
-      touch -r             ".${dir#%{buildroot}%{gopath}/src/%{ipprefix}}" "${dir}"
-    fi
-    echo "%%dir \"${dir#%{buildroot}}\"" >> %{file_list}
-  done
-  if [[ -L "$file" ]] ; then
-    ln -s $(readlink "${file}") "${destdir}/$(basename ${file})"
-    touch -h      -r "${file}"  "${destdir}/$(basename ${file})"
-  fi
-  [[ -f "$file" && ! -L "$file" ]] && install -m 0644 -vp  "${file}" "${destdir}/"
-  [[ -f "$file" ||   -L "$file" ]] && echo "%%{gopath}/src/%%{ipprefix}/${file}" >> %{file_list} || :
-done
-sort -u -o %{file_list} %{file_list}
-}
+%goinstall %{_rpmconfigdir}/goinstall.sh %{!?-i*:-i %{gobaseipath}} %{?__go_ignore_regex:--ignore-regex "%{__go_ignore_regex}"} %{?__go_ignore_dirs:--ignore-dirs "%{__go_ignore_dirs}"} %{?__go_ignore_trees:--ignore-trees "%{__go_ignore_trees}"} --prefix %{buildroot} $@
 
 # Create a local Go build root
 # Useful in %%build and %%check
@@ -116,9 +81,9 @@ sort -u -o %{file_list} %{file_list}
 #      %gochecks subdir1 -R sub/tree/root sub/dir2 -r './testcase(s)?/.*'
 #  — arguments containing spaces or escaped quotes are not supported
 %gochecks(R:r:) %{expand:
-ignore_trees='%{-R*}'
-ignore_regex='%{-r*}'
-ignore_dirs=$(echo %* | sed "s/  */,/g")
+ignore_trees='%{?__go_ignore_trees:%{__go_ignore_trees}}%{!?__go_ignore_trees:%{-R*}}'
+ignore_regex='%{?__go_ignore_regex:%{__go_ignore_regex}}%{!?__go_ignore_regex:%{-r*}}'
+ignore_dirs="%{?__go_ignore_dirs:%{__go_ignore_dirs}}%{!?__go_ignore_dirs:$(echo %* | sed 's/  */,/g')}"
 # search in the buildroot first, then user specified, then the default gopath
 export GOPATH=%{buildroot}%{gopath}${GOPATH+:${GOPATH}}:%{gopath}
 for dir in $(golist --package-path %{gobaseipath} --provided --tests --ignore-dirs "${ignore_dirs}" --ignore-trees "${ignore_trees}" --ignore-regex "${ignore_regex}" ); do

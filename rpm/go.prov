@@ -15,8 +15,10 @@ exit 1
 version=''
 prefix=''
 gopath=/usr/share/gocode
-ignore=''
 goipps=''
+ignore_dirs=''
+ignore_trees=''
+ignore_regex=''
 
 while [ $# -gt 0 ] ; do
   case $1 in
@@ -24,7 +26,9 @@ while [ $# -gt 0 ] ; do
     -g|--goipps)  goipps="$2" ; shift;;
     -p|--prefix)  prefix=$(realpath -sm "$2") ; shift;;
     -v|--version) version="$2" ; shift;;
-    -i|--ignore)  ignore="$2" ; shift;;
+    --ignore-dirs)   ignore_dirs="$2" ; shift;;
+    --ignore-trees)  ignore_trees="$2" ; shift;;
+    --ignore-regex)  ignore_regex="$2" ; shift;;
     (--)          shift; break;;
     (-*)          echo "$0: error - unrecognized option $1" >&2; exit 3;;
     (*)           break;;
@@ -39,14 +43,16 @@ provides() {
 ipprefix=${1}
 
 ignore_ipps=$(echo ${goipps} | tr ':' '\n' | grep -v "^${ipprefix}$" | tr '\n' ',')
-ignore_dirs=$(echo ${ignore_ipps}${ignore} | sed "s/,$//")
+ignore_trees=$(echo ${ignore_ipps}${ignore_trees} | sed "s/,$//")
 
 for provides in $(\
 	GOPATH=${prefix}/usr/share/gocode \
 	golist \
 	--provided \
 	--package-path ${ipprefix} \
-	--ignore-dirs "${ignore_dirs}" \
+	--ignore-dirs  "${ignore_dirs}" \
+	--ignore-trees "${ignore_trees}" \
+	--ignore-regex "${ignore_regex}" \
 ); do
 	echo "golang($provides) = ${version}"
 done
