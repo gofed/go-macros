@@ -34,6 +34,7 @@ ln -fs "$PWD" "$PWD/_build/src/${ipprefix}"
 
 installfile() {
 	file=${1}
+	[[ ${file} == $PWD/_build/src/${ipprefix} ]] && continue
 	file="${file##$PWD/_build/src/${ipprefix}/}"
 	[[ -d "${file}" && ! -L "${file}" ]] && srcdir="${file}" || srcdir=$(dirname "${file}")
 	destdir="${prefix}/${gopath}/src/${ipprefix}/${srcdir}"
