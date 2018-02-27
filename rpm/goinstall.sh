@@ -70,7 +70,7 @@ GOPATH=$PWD/_build golist \
 	--ignore-trees "${ignore_trees}" \
 	--ignore-regex "${ignore_regex}" \
 ); do
-	installfile ${file}
+	installfile ./${file}
 done
 # Process user specified resources
 for file in $@; do
