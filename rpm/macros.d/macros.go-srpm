@@ -100,7 +100,7 @@ if string.starts(provider_prefix, "github.com") then
   index = 0
   for part in string.gmatch(provider_prefix, "[^/]+") do
     if index == 2 then
-      safeset("gosource", "https://%{provider_prefix}/%{commit}/" .. part .. "-" .. rpm.expand("%{shortcommit}") .. ".tar.gz")
+      safeset("gosource", "https://%{provider_prefix}/archive/%{commit}/" .. part .. "-" .. rpm.expand("%{shortcommit}") .. ".tar.gz")
       safeset("gosetup", "%setup -q -n " .. part .. "-%{commit}")
     end
     index = index + 1
