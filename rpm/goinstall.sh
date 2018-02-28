@@ -77,7 +77,7 @@ for file in $@; do
 	if [[ -d "${file}" ]]; then
 		echo "${gopath}/src/${ipprefix}/${file}" >> ${file_list}
 		install -m 0755 -vd ${prefix}/${gopath}/src/${ipprefix}/$file
-		cp -r $file/* ${prefix}/${gopath}/src/${ipprefix}/$file/.
+		cp -r $file/. ${prefix}/${gopath}/src/${ipprefix}/$file
 		continue
 	fi
 	installfile ${file}
