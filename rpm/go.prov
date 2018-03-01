@@ -20,12 +20,20 @@ ignore_dirs=''
 ignore_trees=''
 ignore_regex=''
 
+declare -A attributes
+
 while [ $# -gt 0 ] ; do
   case $1 in
     -h|--help)    usage ;;
     -g|--goipps)  goipps="$2" ; shift;;
     -p|--prefix)  prefix=$(realpath -sm "$2") ; shift;;
     -v|--version) version="$2" ; shift;;
+    -a|--attr|--attribute|--attributes)
+                  IFS=')' read -r -a newattrs <<< "$2"
+                  for index in "${!newattrs[@]}" ; do
+                    newattrs[index]=${newattrs[index]#\(}
+                    attributes[${newattrs[index]%%=*}]=${newattrs[index]#*=}
+                  done ; shift;;
     --ignore-dirs)   ignore_dirs="$2" ; shift;;
     --ignore-trees)  ignore_trees="$2" ; shift;;
     --ignore-regex)  ignore_regex="$2" ; shift;;
@@ -38,6 +46,12 @@ done
 
 # If the go import path prefixes are not set => do nothing
 [[ -z ${goipps} ]] && exit 0
+
+deco=( "" )
+# Some filtering may be needed in the future
+for key in "${!attributes[@]}"; do
+  [ -n "${attributes[$key]}" ] && deco+=( "($key=${attributes[$key]})" )
+done
 
 provides() {
 ipprefix=${1}
@@ -54,7 +68,9 @@ for provides in $(\
 	--ignore-trees "${ignore_trees}" \
 	--ignore-regex "${ignore_regex}" \
 ); do
-	echo "golang($provides) = ${version}"
+        for index in "${!deco[@]}" ; do
+           echo "golang($provides)${deco[index]} = ${version}"
+        done
 done
 }
 
