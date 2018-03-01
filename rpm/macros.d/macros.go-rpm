@@ -46,7 +46,7 @@ done}
 # intentional, to avoid triggering Go autodeps on the same Go directory in
 # different subpackages. Therefore, splitting code in several subpackages
 # requires careful though about %%goinstall invocation order.
-%goinstall %{_rpmconfigdir}/goinstall.sh %{!?-i*:-i %{gobaseipath}} %{?__go_ignore_regex:--ignore-regex "%{__go_ignore_regex}"} %{?__go_ignore_dirs:--ignore-dirs "%{__go_ignore_dirs}"} %{?__go_ignore_trees:--ignore-trees "%{__go_ignore_trees}"} --prefix %{buildroot} $@
+%goinstall %{_rpmconfigdir}/goinstall.sh %{!?-i*:-i %{gobaseipath}} --prefix %{buildroot} %{?__go_ignore:%{__go_ignore}} $@ 
 
 # Create a local Go build root
 # Useful in %%build and %%check
@@ -81,12 +81,13 @@ done}
 #      %gochecks subdir1 -R sub/tree/root sub/dir2 -r './testcase(s)?/.*'
 #  — arguments containing spaces or escaped quotes are not supported
 %gochecks(R:r:) %{expand:
-ignore_trees='%{?__go_ignore_trees:%{__go_ignore_trees}}%{!?__go_ignore_trees:%{-R*}}'
-ignore_regex='%{?__go_ignore_regex:%{__go_ignore_regex}}%{!?__go_ignore_regex:%{-r*}}'
-ignore_dirs="%{?__go_ignore_dirs:%{__go_ignore_dirs}}%{!?__go_ignore_dirs:$(echo %* | sed 's/  */,/g')}"
+ignores="%{?__go_ignore:%{__go_ignore}}"
+for dir in %*; do
+	ignores="$ignores -d $dir"
+done
 # search in the buildroot first, then user specified, then the default gopath
 export GOPATH=%{buildroot}%{gopath}${GOPATH+:${GOPATH}}:%{gopath}
-for dir in $(golist --package-path %{gobaseipath} --provided --tests --ignore-dirs "${ignore_dirs}" --ignore-trees "${ignore_trees}" --ignore-regex "${ignore_regex}" ); do
+for dir in $(golist --package-path %{gobaseipath} --provided --tests ${ignores}); do
   pushd "%{buildroot}%{gopath}/src/${dir}" >/dev/null
   %{gotest}
   popd

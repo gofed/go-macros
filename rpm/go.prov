@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -e
+
 usage() {
 cat >&2 << EOF_USAGE
 Usage: $0 -g <go import path> [-p <prefix>] [-G <go path>] [-v <version string>]
@@ -16,9 +18,7 @@ version=''
 prefix=''
 gopath=/usr/share/gocode
 goipps=''
-ignore_dirs=''
-ignore_trees=''
-ignore_regex=''
+ignores=''
 
 declare -A attributes
 
@@ -34,9 +34,9 @@ while [ $# -gt 0 ] ; do
                     newattrs[index]=${newattrs[index]#\(}
                     attributes[${newattrs[index]%%=*}]=${newattrs[index]#*=}
                   done ; shift;;
-    --ignore-dirs)   ignore_dirs="$2" ; shift;;
-    --ignore-trees)  ignore_trees="$2" ; shift;;
-    --ignore-regex)  ignore_regex="$2" ; shift;;
+    -d|--ignore-dir)   ignores="$ignores $1 $2" ; shift;;
+    -t|--ignore-tree)  ignores="$ignores $1 $2" ; shift;;
+    -r|--ignore-regex)  ignores="$ignores $1 $2" ; shift;;
     (--)          shift; break;;
     (-*)          echo "$0: error - unrecognized option $1" >&2; exit 3;;
     (*)           break;;
@@ -55,18 +55,16 @@ done
 
 provides() {
 ipprefix=${1}
-
-ignore_ipps=$(echo ${goipps} | tr ':' '\n' | grep -v "^${ipprefix}$" | tr '\n' ',')
-ignore_trees=$(echo ${ignore_ipps}${ignore_trees} | sed "s/,$//")
+for ip in $(echo ${goipps} | tr ':' '\n' | grep -v "^${ipprefix}$"); do
+	ignores="$ignores -t $ip"
+done;
 
 for provides in $(\
 	GOPATH=${prefix}/usr/share/gocode \
 	golist \
 	--provided \
 	--package-path ${ipprefix} \
-	--ignore-dirs  "${ignore_dirs}" \
-	--ignore-trees "${ignore_trees}" \
-	--ignore-regex "${ignore_regex}" \
+	${ignores} \
 ); do
         for index in "${!deco[@]}" ; do
            echo "golang($provides)${deco[index]} = ${version}"

@@ -3,9 +3,7 @@
 prefix=''
 gopath=/usr/share/gocode
 goipps=''
-ignore_dirs=''
-ignore_trees=''
-ignore_regex=''
+ignored=''
 file_list='devel.file-list'
 exts_list=''
 ipprefix=''
@@ -14,9 +12,9 @@ while [ $# -gt 0 ] ; do
   case $1 in
     -h|--help)        usage ;;
     -p|--prefix)      prefix=$(realpath -sm "$2") ; shift;;
-    --ignore-dirs)    ignore_dirs="$2" ; shift;;
-    -R|--ignore-trees)   ignore_trees="$2" ; shift;;
-    -r|--ignore-regex)   ignore_regex="$2" ; shift;;
+    -d|--ignore-dir)     ignored="$ignored $1 $2" ; shift;;
+    -t|--ignore-tree)    ignored="$ignored $1 $2" ; shift;;
+    -r|--ignore-regex)   ignored="$ignored $1 $2" ; shift;;
     -f|--file-list)   file_list="$2" ; shift;;
     -e|--extensions)  exts_list="$2" ; shift;;
     -i|--ipprefix)    ipprefix="$2" ; shift;;
@@ -66,9 +64,7 @@ GOPATH=$PWD/_build golist \
 	--to-install \
 	--package-path ${ipprefix} \
 	--with-extensions "${exts_list}" \
-	--ignore-dirs  "${ignore_dirs}" \
-	--ignore-trees "${ignore_trees}" \
-	--ignore-regex "${ignore_regex}" \
+	${ignored} \
 ); do
 	installfile ${file}
 done
