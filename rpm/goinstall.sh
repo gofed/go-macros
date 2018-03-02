@@ -16,7 +16,7 @@ while [ $# -gt 0 ] ; do
     -t|--ignore-tree)    ignored="$ignored $1 $2" ; shift;;
     -r|--ignore-regex)   ignored="$ignored $1 $2" ; shift;;
     -f|--file-list)   file_list="$2" ; shift;;
-    -e|--extensions)  exts_list="$2" ; shift;;
+    -e|--extensions)  exts_list="${exts_list} $1 $2" ; shift;;
     -i|--ipprefix)    ipprefix="$2" ; shift;;
     (--)              shift; break;;
     (-*)              echo "$0: error - unrecognized option $1" >&2; exit 3;;
@@ -63,7 +63,7 @@ for file in $(\
 GOPATH=$PWD/_build golist \
 	--to-install \
 	--package-path ${ipprefix} \
-	--with-extensions "${exts_list}" \
+	${exts_list} \
 	${ignored} \
 ); do
 	installfile ${file}
