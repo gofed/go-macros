@@ -13,13 +13,14 @@ exit 1
 
 prefix=''
 gopath=/usr/share/gocode
-goipps=''
 ignores=''
+
+declare -a goipps
 
 while [ $# -gt 0 ] ; do
   case $1 in
     -h|--help)    usage ;;
-    -g|--goipps)  goipps="$2" ; shift;;
+    -i|--goipps)  goipps=("${goipps[@]}" "$2") ; shift;;
     -p|--prefix)  prefix=$(realpath -sm "$2") ; shift;;
     -d|--ignore-dir)   ignores="$ignores $1 $2" ; shift;;
     -t|--ignore-tree)  ignores="$ignores $1 $2" ; shift;;
@@ -32,12 +33,13 @@ while [ $# -gt 0 ] ; do
 done
 
 # If the go import path prefixes are not set => do nothing
-[[ -z ${goipps} ]] && exit 0
+[[ ${#goipps[@]} -eq 0 ]] && exit 0
 
 requires() {
 ipprefix=${1}
 
-for ip in $(echo ${goipps} | tr ':' '\n' | grep -v "^${ipprefix}$"); do
+for ip in "${goipps[@]}"; do
+	[ "${ip}" == "${ipprefix}" ] && continue
 	ignores="$ignores -t $ip"
 done;
 
@@ -55,7 +57,7 @@ done
 
 while read dir; do
 	ipprefixes=($(echo "${goipps}" | tr ':' '\n'))
-	for ipprefix in ${ipprefixes[@]}; do
+	for ipprefix in ${goipps[@]}; do
 		if [ "${dir##${prefix}/usr/share/gocode/src/}" == "${ipprefix}" ]; then
 			requires ${ipprefix}
 		fi
