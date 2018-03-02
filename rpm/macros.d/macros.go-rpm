@@ -8,88 +8,126 @@
 # The macros necessary at %%setup and srpm stage are in the sister file
 # macros.go-srpm
 
-# find directory filter to remove elements usually not needed to build other Go projects
-%gofinddirfilter  -regextype egrep \! -iregex '.*/(.*[._-])?(example(s)?|test([._-])?data)/.*' \! -ipath '*/vendor/*' \! -iregex  '.*/[._].*'
+# Create a local Go build root
+#
+# The -i <go import path> allows working on another import path than the
+# default %%{goipath} (can not be repeated).
+#
+# The -s <sourcedir> argument allows building from another location than the
+# current directory.
+#
+# The -b <builddir> argument allows specifying the script build directory (by
+# default "$PWD/_build").
+%gobuildroot(i:b:s:) %{expand:
+  %{?-i*:goipath="%{-i*}"}
+  %{?-b*:GO_BUILD_PATH="%{-b*}"}
+  %{?-s*:sourcedir="%{-s*}"}
+  goipath="${goipath:-%{goipath}}"
+  GO_BUILD_PATH="${GO_BUILD_PATH:-${PWD}/_build}"
+  %global gobuildpath "$GO_BUILD_PATH"
+  if [[ ! -e  "%{gobuildpath}/src/${goipath}" ]] ; then
+    install -m 0755 -vd "$(dirname %{gobuildpath}/src/${goipath})"
+    ln -fs "$sourcedir"           "%{gobuildpath}/src/${goipath}"
+  fi
+  cd "%{gobuildpath}/src/${goipath}"
+  install -m 0755 -vd _bin
+  export GOPATH="%{gobuildpath}:%{gopath}"
+  export LDFLAGS="${LDFLAGS:-}%{?commit: -X ${goipath}/version.commit=%{commit}}%{?tag: -X ${goipath}/version.tag=%{tag}}%{?version: -X ${goipath}/version=%{version}}"
+}
 
-# find filter to identify resources usually needed to build other Go projects
-%gofindfilter     -regextype egrep -iregex '(.*\\.(go|c|h|s|tmpl|proto)|./Gopkg\\.(toml|lock))' \! -iname '*_test.go' \! -iregex  '.*/(.*[._-])?test(([._-])?case)?(s)?/.*' %{gofinddirfilter}
-
-# find filter to identify unit tests
-%gofindtestfilter                  -iname '*.go' %{gofinddirfilter}
+# Try to install Go package files in sensible locations, with strict directory
+# ownership and lockfile creation as required by Go autodeps.
+#
+# %%goinstall will install files found in the current directory to the default
+# spec import path (%%goipath}) or, if passed one or several -i <import path >
+# arguments, will install to the specified import pathes.
+#
+# The -s <sourcedir> argument allows installing from another location than the
+# current directory.
+#
+# The -b <builddir> argument allows specifying the script build directory (by
+# default "$PWD/_build").
+#
+# %%goinstall will identify by itself Go language native files and directories
+# that need installing. In case a project uses other kind of files, you can ask
+# to install the corresponding file extensions using the -e flag one or several
+# times.
+#
+# Alternatively, you can pass directly the corresponding files as argument to
+# %%goinstall.
+#
+# %%goinstall accepts the following arguments to exclude elements from
+# processing:
+# -d <directory>  a directory, relative to the import path root
+#                 not recursive (subdirectories are not excluded)
+# -D <directory>  a directory, prefixed with the import path root
+#                 not recursive (subdirectories are not excluded)
+# -t <tree root>  a subtree root, relative to the import path root
+#                 recursive (subdirectories are excluded)
+# -T <tree root>  a subtree root, prefixed with the import path root
+#                 recursive (subdirectories are excluded)
+# -r <regexp>     a regexp, relative to the import path root
+# -R <regexp>     a regexp, prefixed with the import path root
+#
+# %%goinstall will generate a file list that can be used in a %%files spec
+# section. The default file list name matches the %%{goname} of the installed
+# import path: %%{goname}-devel.file-list. You can override this using the -o
+# argument with another filename (strongly recommended when processing multiple
+# import pathes).
+#
+# When invoked several times with the same import pathit will append to
+# existing file lists not create a new one.
+#
+# When invoked several times with different file list names, it will attribute
+# directories to the first file list that makes use of them only.
+%goinstall(i:p:g:b:d:D:t:T:r:R:e:s:o:) %{expand:
+%{!?-o*:%{!?-i*: %define listroot %{goname}}
+        %{?-i*:  %define listroot %gorpmname %{-i*}}}
+go-rpm-integration install %{!?-i*:-i %{goipath}} \\
+                           %{!?-o*:-o %{listroot}-devel.file-list} \\
+                           %{!?-p*:-p %{buildroot}} %{!?-g*:-g %{gopath}} \\
+                           %{!?-b*:-b "$PWD/_build"} %{?**}
+}
 
 # Collect md files spread in subdirectories
 %gocollectmd %{expand:
-for mdfile in $(find . -iname '*.md' %{gofinddirfilter}) ; do
+for mdfile in $(find . -iname '*.md') ; do
   suffix=$(dirname $mdfile | sed 's+^\./++g' | sed 's+/+·+g')
   if [[ $suffix != '.' ]] ; then
     cp -p "$mdfile" "$(echo $(basename $mdfile) | sed 's+\.md$++g')·${suffix}.md"
   fi
 done}
 
-# Try to install Go package files in sensible locations, with strict directory
-# ownership as required by Go autodeps
-#
-# %%goinstall will generate a file list that can be used in a %%files spec
-# section. The default file list name is devel.file-list. It can be overriden
-# by passing the -f argument to the macro with another filename.
-#
-# %%goinstall recognizes only Go language native files and directories.
-# In case a file with non-native Go extension is required, you can pass
-# the -e argument with a comma separated list of extensions. Example:
-# %%goinstall -e .tmpl,.proto
-#
-# When invoked several times it will append to existing file lists not create
-# a new one.
-#
-# When invoked several times with different file list names, it will attribute
-# directories to the first file list that makes use of them only. This is
-# intentional, to avoid triggering Go autodeps on the same Go directory in
-# different subpackages. Therefore, splitting code in several subpackages
-# requires careful though about %%goinstall invocation order.
-%goinstall %{_rpmconfigdir}/goinstall.sh %{!?-i*:-i %{gobaseipath}} --prefix %{buildroot} %{?__go_ignore:%{__go_ignore}} $@ 
-
-# Create a local Go build root
-# Useful in %%build and %%check
-%gobuildroot() %{expand:
-  GO_BUILD_PATH="$PWD/_build"
-  %global gobuildpath "$GO_BUILD_PATH"
-  install -m 0755 -vd "$(dirname %{gobuildpath}/src/%{gobaseipath})"
-  ln -fs "$PWD" "%{gobuildpath}/src/%{gobaseipath}"
-  cd "%{gobuildpath}/src/%{gobaseipath}"
-  install -m 0755 -vd _bin
-  export GOPATH="%{gobuildpath}:%{gopath}"
-  export LDFLAGS="${LDFLAGS:-}%{?commit: -X %{gobaseipath}/version.commit=%{commit}}%{?tag: -X %{gobaseipath}/version.tag=%{tag}}%{?version: -X %{gobaseipath}/version=%{version}}"
-}
-
-# Run %%{gotest} on all subdirectories except for those provided in parameters.
+# Run go test %{gotestflags} on all subdirectories except for those filtered out
 # THIS MACRO IS OPT-OUT.
-# It only allows excluding specific subdirectories from the test run, with the
-# following syntax :
-#  — to exclude the tests in a specific subdirectory, not recursively:
-#    pass it as parameter. Use
-#    Example:
-#      %gochecks subdir1 sub2/dir
-#  — to exclude the tests in a whole subtree:
-#    use the -R switch with the subtree roots as argument.
-#    Example:
-#      %gochecks -R sub1/tree/root,sub2/fixtures
-#  — to exclude using free-form egrep-style regexes:
-#    use the -r switch with the regex as argument.
-#    Example:
-#      %gochecks -r '.*/(.*[._-])?test(([._-])?case)?(s)?/.*'
-#  — you can mix and match:
-#      %gochecks subdir1 -R sub/tree/root sub/dir2 -r './testcase(s)?/.*'
-#  — arguments containing spaces or escaped quotes are not supported
-%gochecks(R:r:) %{expand:
-ignores="%{?__go_ignore:%{__go_ignore}}"
-for dir in %*; do
-	ignores="$ignores -d $dir"
-done
-# search in the buildroot first, then user specified, then the default gopath
-export GOPATH=%{buildroot}%{gopath}${GOPATH+:${GOPATH}}:%{gopath}
-for dir in $(golist --package-path %{gobaseipath} --provided --tests ${ignores}); do
-  pushd "%{buildroot}%{gopath}/src/${dir}" >/dev/null
-  %{gotest}
-  popd
-done
+#
+# %%gotest will process the default spec import path (%%goipath}) or, if passed
+# one or several -i <import path > arguments, will process the specified import
+# pathes.
+#
+# It targets by default files found in "$PWD/_build/src/%{goipath}". This
+# directory will have been created during %build or %install if you used the
+# other macros with their default flags. Use -b <directory> to override.
+#
+# Alternatively, use the -s switch to process files the package installed in
+# %{gopath} (not recommended, as that requires deploying to other packages many
+# test and testdata files with complex dependencies and uneven quality).
+#
+# It accepts the following arguments to exclude elements from
+# processing:
+# -d <directory>  a directory, relative to the import path root
+#                 not recursive (subdirectories are not excluded)
+# -D <directory>  a directory, prefixed with the import path root
+#                 not recursive (subdirectories are not excluded)
+# -t <tree root>  a subtree root, relative to the import path root
+#                 recursive (subdirectories are excluded)
+# -T <tree root>  a subtree root, prefixed with the import path root
+#                 recursive (subdirectories are excluded)
+# -r <regexp>     a regexp, relative to the import path root
+# -R <regexp>     a regexp, prefixed with the import path root
+%gochecks(i:sp:g:wb:d:D:t:T:r:R:) %{expand:
+%{?gotestflags:GO_TEST_FLAGS="%{gotestflags}"} \\
+%{?gotestextldflags:GO_TEST_EXT_LD_FLAGS="%{gotestextldflags}"} \\
+go-rpm-integration check %{!?-i*:-i %{goipath}} %{!?-p*:-p %{buildroot}} \\
+                         %{!?-g*:-g %{gopath}} %{!?-b*:-b "$PWD/_build"} %{?**}
 }

@@ -26,14 +26,23 @@
 # Mandatory parameter: a Go import path
 %gorpmname() %{lua:
 local goname = rpm.expand("%1")
--- add a golang prefix and lowercase
-goname       = string.lower("golang-" .. goname .. "/")
--- replace various separators rpm does not like with -
+-- lowercase and end with '/'
+goname       = string.lower(goname .. "/")
+-- remove eventual protocol prefix
+goname       = string.gsub(goname, "^http(s?)://",         "")
+-- add golang prefix
+goname       = "golang-" .. goname
+-- remove FQDN root (.com, .org, etc)
+goname       = string.gsub(goname, "^([^/]+)%.([^%./]+)/", "%1/")
 -- special-case x.y.z number-strings as that’s an exception in our naming
 -- guidelines
-goname       = string.gsub(goname, "^([^/]+)%.([^%./]+)/", "%1/")
-goname       = string.gsub(goname, "(%d)%.(%d)",           "%1|%2")
+repeat
+  goname, i = string.gsub(goname, "(%d)%.(%d)",            "%1:%2")
+until i == 0
+-- replace various separators rpm does not like with -
 goname       = string.gsub(goname, "[%._/%-]+",            "-")
+-- because of the Azure sdk
+goname       = string.gsub(goname, "%-for%-go%-",          "-")
 -- Tokenize along - separators and remove duplicates to avoid
 -- golang-foo-foo-bar-foo names
 local result = ""
@@ -49,16 +58,65 @@ end
 -- reassemble the string, restore x.y.z runs, convert the vx.y.z
 -- Go convention to x.y.z as prefered in rpm naming
 result = string.gsub(result, "^-", "")
-result = string.gsub(result, "|", ".")
-result = string.gsub(result, "%-v([%.%d])", "%1")
+result = string.gsub(result, ":", ".")
+-- some projects have a name that end up in a number, and *also* add release
+-- numbers on top of it, keep a - prefix before version strings
+result = string.gsub(result, "%-v([%.%d])", "-%1")
 print(result)
 }
 
-# forgemeta macro is available in Rawhide only. Thus, it can't be used to generate
-# source URL for other Fedora distribution. Until the macro is available there,
-# the source URL needs to be crafted manually
-%gocraftmeta(u:spvi) %{expand:%{lua:
-local iopt        = rpm.expand("%{?-i}")
+# Map Go information to rpm metadata. This macro will compute default spec
+# variable values.
+#
+# The following spec variable MUST be set before calling the macro:
+#
+#   goipath   the packaged Go project import path
+#
+# The following spec variables SHOULD be set before calling the macro:
+#
+#   forgeurl  the project url on the forge, strongly recommended, if it can not
+#             be deduced from goipath; alternatively, use -u <url>
+#   Version   if applicable, set it with Version: <version>
+#   tag       if applicable
+#   commit    if applicable
+#
+# The macro will attempt to compute and set the following variables if they are
+# not already set by the packager:
+#
+#   goname         an rpm-compatible package name derived from goipath
+#   gosource       an URL that can be used as SourceX: value
+#   gourl          an URL that can be used as URL: value
+#
+# It will delegate processing to the forgemeta macro for:
+#
+#   forgesource    an URL that can be used as SourceX: value
+#   forgesetupargs the correct arguments to pass to %setup for this source
+#                  used by %forgesetup and %forgeautosetup
+#   archivename    the source archive filename, without extentions
+#   archiveext     the source archive filename extensions, without leading dot
+#   archiveurl     the url that can be used to download the source archive,
+#                  without renaming
+#   scm            the scm type, when packaging code snapshots: commits or tags
+#
+# If the macro is unable to parse your forgeurl value set at least archivename
+# and archiveurl before calling it.
+#
+# Most of the computed variables are both overridable and optional. However,
+# the macro WILL REDEFINE %{dist} when packaging a snapshot (commit or tag).
+# The previous %{dist} value will be lost. Don’t call the macro if you don’t
+# wish %{dist} to be changed.
+#
+# Optional parameters:
+#   -u <url>  Ignore forgeurl even if it exists and use <url> instead. Note
+#             that the macro will still end up setting <url> as the forgeurl
+#             spec variable if it manages to parse it.
+#   -s  Silently ignore problems in forgeurl, use it if it can be parsed,
+#       ignore it otherwise.
+#   -p  Restore problem handling, override -s.
+#   -v  Be verbose and print every spec variable the macro sets.
+#   -i  Print some info about the state of spec variables the macro may use or
+#       set at the end of the processing.
+%gometa(u:spvi) %{expand:%{lua:
 local forgeurl    = rpm.expand("%{?-u*}")
 if (forgeurl == "") then
   forgeurl        = rpm.expand("%{?forgeurl}")
@@ -76,86 +134,33 @@ local function safeset(rpmvariable,value)
     explicitset(rpmvariable,value)
   end
 end
-function string.starts(String,Start)
-   return string.sub(String,1,string.len(Start))==Start
+-- All the Go packaging automation relies on goipath being set
+local goipath = rpm.expand("%{?goipath}")
+if (goipath == "") then
+  rpm.expand("%{error:Please set the Go import path in the “goipath” variable before calling “gometa”!}")
 end
--- All the Go packaging automation relies on gobaseipath being set
-local gobaseipath = rpm.expand("%{?gobaseipath}")
-if (gobaseipath == "") then
-  rpm.expand("%{error:Please set the Go import path in the “gobaseipath” variable before calling “gocraftmeta”!}")
-end
--- emulate forge URLs
-local function craftforgeurls(forgeurl)
-  if string.starts(forgeurl, "https://github.com") then
-  -- github.com/PROJECT/REPO
-    index = 0
-    for part in string.gmatch(forgeurl, "[^/]+") do
-      if index == 3 then
-        safeset("gosource", forgeurl .. "/archive/%{commit}/" .. part .. "-" .. rpm.expand("%{commit}") .. ".tar.gz")
-        explicitset("forgesetup", "%setup -q -n " .. part .. "-%{commit}")
-        explicitset("dist", rpm.expand(".%(date +%Y%m%d -u -r " .. part .. "-%{commit}.tar.gz)git%(c=%{commit}; echo ${c:0:7})%{dist}"))
-      end
-      index = index + 1
-    end
-  elseif string.starts(forgeurl, "https://bitbucket.org") then
-    index = 0
-    project = ""
-    for part in string.gmatch(forgeurl, "[^/]+") do
-      if index == 2 then
-        project = part
-      elseif index == 3 then
-        safeset("gosource", forgeurl .. "/get/" .. rpm.expand("%{commit}") .. ".tar.gz")
-        explicitset("forgesetup", "%setup -q -n " .. project .. "-" .. part .. "-" .. rpm.expand("%(c=%{commit}; echo ${c:0:12})"))
-        explicitset("dist", rpm.expand(".%(date +%Y%m%d -u -r " .. project .. "-" .. part .. "-%(c=%{commit}; echo ${c:0:12}).tar.bz2)%{?scm}%{!?scm:git}%(c=%{commit}; echo ${c:0:7})%{dist}"))
-      end
-      index = index + 1
-    end
-  end
-end
+-- Compute and set spec variables
 if (forgeurl ~= "") then
+  rpm.expand("%forgemeta %{?-v} %{?-i} %{?-s} %{?-p} -u " .. forgeurl .. "\\n")
   safeset("gourl", forgeurl)
-  if (rpm.expand("%{?forgemeta:1}") ~= "") then
-    rpm.expand("%forgemeta %{?-v} %{?-i} %{?-s} %{?-p} -u " .. forgeurl .. "\\n")
-  else
-    if (rpm.expand("%{?commit}") == "") then
-      rpm.expand("%{error:Please set the Go import path commit in the “commit” variable before calling “gocraftmeta”!}")
-    end
-    craftforgeurls(forgeurl)
-  end
 else
-  safeset("gourl", "https://" .. gobaseipath)
-  if (rpm.expand("%{?forgemeta:1}") ~= "") then
-    rpm.expand("%forgemeta %{?-v} %{?-i} -s     %{?-p} -u %{gourl}\\n")
-  else
-    if (rpm.expand("%{?commit}") == "") then
-      rpm.expand("%{error:Please set the Go import path commit in the “commit” variable before calling “gocraftmeta”!}")
-    end
-    craftforgeurls("https://" .. gobaseipath)
-  end
+  safeset("gourl", "https://" .. goipath)
+  rpm.expand("%forgemeta %{?-v} %{?-i} -s     %{?-p} -u %{gourl}\\n")
 end
 if (rpm.expand("%{?forgesource}") ~= "") then
   safeset("gosource", "%{forgesource}")
 else
   safeset("gosource", "%{gourl}/%{archivename}.%{archiveext}")
 end
-------------------------------------
--- Compute and set spec variables --
-------------------------------------
-safeset("goname", "%gorpmname %{gobaseipath}")
+safeset("goname", "%gorpmname %{goipath}")
 -- Final spec variable summary if the macro was called with -i
-if (iopt ~= "") then
-  rpm.expand("%{echo:Go-specific packaging variables\\n}")
-  rpm.expand("%{echo:  gobaseipath:     %{?gobaseipath}\\n}")
-  rpm.expand("%{echo:  goname:          %{?goname}\\n}")
-  rpm.expand("%{echo:  gourl:           %{?gourl}\\n}")
-  rpm.expand("%{echo:  gosource:        %{?gosource}\\n}")
-  rpm.expand("%{echo:  forgesetup:      %{?forgesetup}\\n}")
-  rpm.expand("%{echo:  dist:            %{?dist}\\n}")
-end
+if (rpm.expand("%{?-i}") ~= "") then
+  rpm.expand("%{echo:Go-specific packaging variables}")
+  rpm.expand("%{echo:  goipath:         %{?goipath}}")
+  rpm.expand("%{echo:  goname:          %{?goname}}")
+  rpm.expand("%{echo:  gourl:           %{?gourl}}")
+  rpm.expand("%{echo:  gosource:        %{?gosource}}")
+end}
+BuildRequires: go-rpm-macros
+ExclusiveArch: %{go_arches}
 }
-# e.g. el6 has ppc64 arch without gcc-go, so EA tag is required
-ExclusiveArch:  %{go_arches}
-# If go_compiler is not set to 1, there is no virtual provide. Use golang instead.
-BuildRequires:  %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
-}
-

@@ -18,5 +18,6 @@
 }
 
 # Define commands for testing
-%gotest() go test -buildmode pie -compiler gc -ldflags "${LDFLAGS:-} -extldflags '%__global_ldflags %{?__golang_extldflags}'" %{?**};
-
+%gotestflags      -buildmode pie -compiler gc
+%gotestextldflags %__global_ldflags %{?__golang_extldflags}
+%gotest() go test %{gotestflags} -ldflags "${LDFLAGS:-} -extldflags '%{gotestextldflags}'" %{?**};

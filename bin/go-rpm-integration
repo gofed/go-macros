@@ -1,0 +1,298 @@
+#!/bin/bash
+# Copyright (c) 2018 Nicolas Mailhot <nim@fedoraproject.org>,
+#                    Jan Chaloupka <jchaloup@redhat.com>
+# This file is distributed under the terms of GNU GPL license version 3, or
+# any later version.
+
+usage() {
+cat >&2 << EOF_USAGE
+Usage: $0 <action> [ [-h] ]
+                   [ [-i <go import path> ] ]
+                   [ [-y] ] [ [-p <prefix>] [-g <go path>] ]
+                   [ [-w] ] [ [-b <go build path>] ]
+                   [ [-d <directory>] [-D <directory>]
+                     [-t <tree root>] [-T <tree root>]
+                     [-r <regex>]     [-R <regex>] ]
+                   [ [-e <extension>] [-s <sourcedir>] [-o <file>] <file> ]
+                   [ [-v <version>] ] [ [-a <attribute>] ]
+
+<action>             should be one of: install, check, provides, requires
+
+Most actions accept the same set of arguments, and will silently ignore those
+that do not apply to a specific action. Unless specified otherwise, all
+arguments are optional.
+
+“install”-specific arguments:
+
+-i <go import path>  is a mandatory argument
+-e <extension>       add files ending in <extension> to the default
+                     installation set,
+                     can be specified several times
+-s <sourcedir>       install files from the specified source directory, not
+                     from the current directory
+-o <file>            output file lists to file,
+                     default value if not set: devel.file-list
+<file>               add <file> to the default installation set,
+                     can be specified several times
+
+“check”-specific arguments:
+
+-i <go import path>  is a mandatory argument
+-y                   check the files installed in the system Go path, not the
+                     files in the current work directory,
+                     this option is usually used with -p and -g,
+-w                   check the files in the current work directory, not the
+                     files installed in the system Go path,
+                     this option is usually used with -b,
+                     this is the default check mode if neither -y nor -w are
+                     specified
+
+“provides”-specific arguments:
+
+-v <version string>: tag the provides with <version string>
+-a <attribute>:      an attribute to add to the provides, for example
+                     -a "(commit=XXXX)"
+                     -a "(branch=YYYY)"
+                     -a "(tag=rx.y.z-alpha1)"
+                     can be specified several times
+
+Common arguments:
+
+-i <go import path>  a Go import path of the target package,
+                     can be specified several times,
+                     mandatory for: install and check,
+                     ignored by: provides and requires
+-h                   print this help
+-p <prefix>:         an optionnal prefix path such as %{buildroot}
+-g <go path>:        the root of the Go source tree
+                     default value if not set: /usr/share/gocode
+-b <go build path>   sets the GO_BUILD_PATH work directory,
+                     it will be created if not already existing,
+                     default value if not set: \$PWD/_build
+                     used by: install and check,
+                     ignored by: provides and requires
+-d <directory>       a directory that should be ignored during processing,
+                     relative to the import path root,
+                     non recursive,
+                     can be specified several times
+-D <directory>       a directory that should be ignored during processing,
+                     must be prefixed with the import path root,
+                     non recursive,
+                     can be specified several times
+-t <tree root>       the root of a directory tree that should be ignored during
+                     processing,
+                     relative to the import path root,
+                     recursive,
+                     can be specified several times
+-T <tree root>       the root of a directory tree that should be ignored during
+                     processing,
+                     must be prefixed with the import path root,
+                     recursive,
+                     can be specified several times
+-r <regex>           a regex matching elements that should be ignored during
+                     processing,
+                     relative to the import path root,
+                     can be specified several times
+-R <regex>           a regex matching elements that should be ignored during
+                     processing,
+                     must be prefixed with the import path root,
+                     can be specified several times
+EOF_USAGE
+exit 1
+}
+
+action=''
+version=''
+prefix=''
+checkin="workdir"
+sourcedir="${PWD}"
+GO_BUILD_PATH="${GO_BUILD_BATH:-${PWD}/_build}"
+gopath=/usr/share/gocode
+filelist='devel.file-list'
+golistflags=()
+goipathes=()
+declare -A attributes
+
+if [[ $# -eq 0 ]] ; then
+  usage
+else case $1 in
+    install|check|provides|requires) action=$1 ;;
+    *)                               usage     ;;
+  esac
+fi
+
+shift
+
+if ! options=$(getopt -n $0 -o hi:yp:g:wb:d:D:t:T:r:R:e:o:v:a: \
+                      -l help,go-import-path: \
+                      -l system-files,prefix:,go-path: \
+                      -l workdir-files,go-build-path: \
+                      -l ignore-directory:,ignore-prefixed-directory: \
+                      -l ignore-tree:,ignore-prefixed-tree: \
+                      -l ignore-regex:,ignore-prefixed-regex: \
+                      -l include-extension:,output: \
+                      -l version:,attribute: \
+                      -- "$@")
+then
+    usage
+fi
+
+eval set -- "$options"
+
+while [ $# -gt 0 ] ; do
+  case $1 in
+    -h|--help)                      usage                               ;;
+    -i|--go-import-path)            goipathes+=( "$2" )          ; shift;;
+    -y|--system-files)              checkin="system"                    ;;
+    -p|--prefix)                    prefix=$(realpath -sm "$2")  ; shift;;
+    -g|--go-path)                   gopath="$2"                  ; shift;;
+    -w|--workdir-files)             checkin="workdir"                   ;;
+    -b|--go-build-path)             GO_BUILD_PATH="$2"           ; shift;;
+    -d|--ignore-directory)          golistflags+=( "-d \"$2\"" ) ; shift;;
+    -D|--ignore-prefixed-directory) golistflags+=( "-D \"$2\"" ) ; shift;;
+    -t|--ignore-tree)               golistflags+=( "-t \"$2\"" ) ; shift;;
+    -T|--ignore--prefixed-tree)     golistflags+=( "-T \"$2\"" ) ; shift;;
+    -r|--ignore-regex)              golistflags+=( "-r \"$2\"" ) ; shift;;
+    -R|--ignore--prefixed-regex)    golistflags+=( "-R \"$2\"" ) ; shift;;
+    -e|--include-extension)         golistflags+=( "-e \"$2\"" ) ; shift;;
+    -s|--source-dir)                sourcedir="$2"               ; shift;;
+    -o|--output)                    filelist="$2"                ; shift;;
+    -v|--version)                   version="$2"                 ; shift;;
+    -a|--attribute)                 IFS=')' read -r -a newattrs <<< "$2"
+                                      for index in "${!newattrs[@]}" ; do
+                                        newattrs[index]=${newattrs[index]#\(}
+                                        attributes[${newattrs[index]%%=*}]=${newattrs[index]#*=}
+                                    done                         ; shift;;
+    (--)          shift; break ;;
+    (-*)          usage ;;
+    (*)           break ;;
+  esac
+  shift
+done
+
+installfile() {
+  goipath="${1}"
+  file="${2}"
+  file="${file#./}"
+  [[ -d "${file}" && ! -L "${file}" ]] && srcdir="${file}" || srcdir=$(dirname "${file}")
+  destdir="${prefix}${gopath}/src/${goipath}/${srcdir}"
+  destdir="${destdir%/.}"
+  dir="${destdir}"
+  dirs=()
+  while [[ ! -e "${dir}" ]] ; do
+    dirs=("$dir" "${dirs[@]}")
+    dir=$(dirname "${dir}")
+  done
+  for dir in "${dirs[@]}" ; do
+    install -m 0755 -vd "${dir}"
+    if $(echo "${dir}" | grep -q "^${prefix}${gopath}/src/${goipath}") ; then
+      touch -r             ".${dir#${prefix}${gopath}/src/${goipath}}" "${dir}"
+    fi
+    echo "%dir \"${dir#${prefix}}\"" >> ${filelist}
+  done
+  if [[ -L "$file" ]] ; then
+    ln -s $(readlink "${file}") "${destdir}/$(basename ${file})"
+    touch -h      -r "${file}"  "${destdir}/$(basename ${file})"
+  fi
+  [[ -f "$file" && ! -L "$file" ]] && install -m 0644 -vp  "${file}" "${destdir}/"
+  [[ -f "$file" ||   -L "$file" ]] && echo "${gopath}/src/${goipath}/${file}" >> "${filelist}" || :
+}
+
+listfiles() {
+goipath="${1}"
+for file in $(\
+  GOPATH="${GO_BUILD_PATH}"        \
+  golist --to-install              \
+         --package-path ${goipath} \
+         ${golistflags[@]}
+  ); do
+  # The import path root does not end in /
+  file="${file##${GO_BUILD_PATH}/src/${goipath}}"
+  echo "${file##/}"
+done
+}
+
+checks() {
+goipath="${1}"
+for dir in $(\
+  GOPATH="${workroot}${GOPATH+:${GOPATH}}" \
+  golist --provided --tests                \
+         --package-path ${goipath}         \
+         ${golistflags[@]}                 \
+  ) ; do
+  pushd "${workroot}/src/${dir}" >/dev/null
+    echo "Testing \"${workroot}/src/${dir}\""
+    (set -x ; GOPATH="${GOPATH:+${GOPATH}:}${gopath}" \
+              go test ${GO_TEST_FLAGS} \
+                      -ldflags "${LDFLAGS:+${LDFLAGS} }-extldflags ${GO_TEST_EXT_LD_FLAGS}")
+  popd >/dev/null
+done
+}
+
+provides() {
+goipath="${1}"
+for prov in $(\
+  GOPATH="${prefix}${gopath}"      \
+  golist --provided                \
+	 --package-path ${goipath} \
+         ${golistflags[@]}         \
+  ); do
+  for index in "${!deco[@]}" ; do
+    echo "golang($prov)${deco[index]}${version}"
+  done
+done
+}
+
+requires() {
+goipath="${1}"
+for req in $(\
+  GOPATH="${prefix}${gopath}"      \
+  golist --imported                \
+	 --package-path ${goipath} \
+	 --skip-self               \
+         ${golistflags[@]}         \
+  ); do
+  echo "golang($req)"
+done
+}
+
+# Action-specific preparation
+case $action in
+  install)        [[ ${#goipathes[@]} -eq 0 ]] && exit 0
+                  otherfiles=( $* )
+                  install -m 0755   -vd "${prefix}${gopath}/src"
+                  [[ ! -e .goipath ]] && touch .goipath
+                  for goipath in ${goipathes[@]} ; do
+                    if [[ ! -e  "${GO_BUILD_PATH}/src/${goipath}" ]] ; then
+                      install -m 0755 -vd "$(dirname   ${GO_BUILD_PATH}/src/${goipath})"
+                      ln -fs "${sourcedir}"           "${GO_BUILD_PATH}/src/${goipath}"
+                    fi
+                    pushd "${GO_BUILD_PATH}/src/${goipath}" >/dev/null
+                      [[ ! -e .goipath ]] && touch .goipath
+                      golistfiles=$(listfiles "${goipath}")
+                      for file in ${golistfiles[@]} ${otherfiles[@]} .goipath ; do
+                        installfile "${goipath}" "${file}"
+                      done
+                    popd >/dev/null
+                  done
+                  sort -u -o "${filelist}" "${filelist}" ;;
+  check)          [[ ${#goipathes[@]} -eq 0 ]] && exit 0
+                  [[ ${checkin} == "system" ]] && workroot="${prefix}${gopath}" \
+                                               || workroot="${GO_BUILD_PATH}"
+                  for goipath in ${goipathes[@]} ; do
+                    checks "${goipath}"
+                  done ;;
+  provides)       deco=( "" )
+                  for key in "${!attributes[@]}"; do
+                    [[ -n "${attributes[$key]}" ]] && deco+=( "($key=${attributes[$key]})" )
+                  done
+                  [[ -n ${version} ]] && version=" = ${version}"
+                  while read lockfile ; do
+                    dir=$(dirname "${lockfile}")
+                    provides "${dir#${prefix}${gopath}/src/}"
+                  done ;;
+  requires)       while read lockfile ; do
+                    dir=$(dirname "${lockfile}")
+                    requires "${dir#${prefix}${gopath}/src/}"
+                  done ;;
+esac

@@ -1,0 +1,173 @@
+#!/bin/bash
+# Copyright (c) 2018 Nicolas Mailhot <nim@fedoraproject.org>
+# This file is distributed under the terms of GNU GPL license version 3, or
+# any later version.
+
+usage() {
+cat >&2 << EOF_USAGE
+Usage: $0 <action> [ [-h] ]
+                   [ [-p <prefix>] [-g <go path>] ]
+                   [ [-v <version>] ] [ [-a <attribute>] ]
+
+<action>             should be one of: provides, requires
+
+Most actions accept the same set of arguments, and will silently ignore those
+that do not apply to a specific action. Unless specified otherwise, all
+arguments are optional.
+
+“provides”-specific arguments:
+
+-v <version string>: tag the provides with <version string>
+-a <attribute>:      an attribute to add to the provides, for example
+                     -a "(commit=XXXX)"
+                     -a "(branch=YYYY)"
+                     -a "(tag=rx.y.z-alpha1)"
+                     can be specified several times
+
+“requires”-specific arguments:
+
+-v <version string>: tag symbolink link target requires with <version string>
+
+Common arguments:
+
+-h                   print this help
+-p <prefix>:         an optionnal prefix path such as %{buildroot}
+-g <go path>:        the root of the Go source tree
+                     default value if not set: /usr/share/gocode
+EOF_USAGE
+exit 1
+}
+
+action=''
+version=''
+prefix=''
+gopath=/usr/share/gocode
+declare -A attributes
+
+if [[ $# -eq 0 ]] ; then
+  usage
+else case $1 in
+    provides|requires) action=$1 ;;
+    *)                 usage ;;
+  esac
+fi
+
+shift
+
+if ! options=$(getopt -n $0 -o hp:gv:a: \
+                      -l help,prefix:,go-path: \
+                      -l version:,attribute: \
+                      -- "$@")
+then
+    usage
+fi
+
+eval set -- "$options"
+
+while [ $# -gt 0 ] ; do
+  case $1 in
+    -h|--help)                      usage ;;
+    -p|--prefix)                    prefix=$(realpath -sm "$2")  ; shift;;
+    -g|--go-path)                   gopath="$2"                  ; shift;;
+    -v|--version)                   version="$2"                 ; shift;;
+    -a|--attribute)                 IFS=')' read -r -a newattrs <<< "$2"
+                                      for index in "${!newattrs[@]}" ; do
+                                        newattrs[index]=${newattrs[index]#\(}
+                                        attributes[${newattrs[index]%%=*}]=${newattrs[index]#*=}
+                                    done                         ; shift;;
+    (--)          shift; break;;
+    (-*)          usage ;;
+    (*)           break;;
+  esac
+  shift
+done
+
+deco=( "" )
+for key in "${!attributes[@]}"; do
+  [ -n "${attributes[$key]}" ] && deco+=( "($key=${attributes[$key]})" )
+done
+
+
+# Convert paths within gopath to version-constrained provides
+provides() {
+ local package="${1#${prefix}${gopath}/src/}"
+ for index in "${!deco[@]}" ; do
+   echo "golang(${package})${deco[index]}${version}"
+ done
+}
+
+# Convert paths within gopath to version-constrained requires
+requires() {
+  local package="${1#${prefix}${gopath}/src/}"
+  echo "golang(${package})${version}"
+}
+
+# Resolve a symlink target in presence of a build root
+resolvelink() {
+  local lt=$(realpath -m "$1")
+  echo "${prefix}${lt#${prefix}}"
+}
+
+# Resolve a symlink to its ultimate target in presence of a build root
+ultimateresolvelink() {
+  local lt="$1"
+  until [[ ! -L ${lt} ]] ; do
+    lt=$(resolvelink "${lt}")
+  done
+  echo "${lt}"
+}
+
+# Test if a path is a directory within the target gopath
+isgopathdir() {
+  local lt="$1"
+  if [[ -d ${lt} ]] && [[ "${lt}"/ == "${prefix}${gopath}"/src/* ]] ; then
+    true
+  else
+    false
+  fi
+}
+
+# A symlink can point to a whole directory tree, but go.attr will only
+# trigger on the root symlink.
+# Therefore, check the symlink points within the processed import path, then
+# walk all the target tree to generate symlink provides/requires
+#
+# To process nested symlinks the function needs to be provided a working path
+# to the symlink tip within the build root as second argument.
+processlink() {
+  local link="$1"
+  local nexttarget=$(resolvelink "$2")
+  local linktarget=$(ultimateresolvelink "${nexttarget}")
+  if isgoipathdir "${linktarget}" ; then
+    case ${action} in
+      provides) find "${linktarget}" -type d -print | while read subdir ; do
+                  provides    "${link}${subdir#${linktarget}}"
+                done
+                find "${linktarget}" -type l -print | while read sublink ; do
+                  processlink "${link}${sublink#${linktarget}}" "${sublink}"
+                done ;;
+      requires) # Requires is not recursive — it relies on providers requiring their own needs
+                find "${nexttarget}" -type d -print | while read subdir ; do
+                  requires   "${subdir}"
+                done
+                find "${nexttarget}" -type l -print | while read sublink ; do
+                  if isgopathdir $(ultimateresolvelink "${sublink}") ; then
+                  # The owner of the link will declare the correct requires
+                    requires "${sublink}"
+                  fi
+                done ;;
+    esac
+  fi
+}
+
+# go.attr ensures that every time a package declares owning a symlink under
+# %{gopath}/src, symlink name will be piped to this script to compute the
+# package Go provides/requires.
+#
+# For legacy reason the script is supposed to be able to handle multiple
+# inputs, even though modern rpm invokes it separately for each directory.
+while read dir ; do
+  if [[ -L $dir ]] ; then
+    processlink "$dir" "$dir"
+  fi
+done | sort -u | grep -v '/\([._]\)\?\(internal\|testdata\|vendor\)\([/)]\)'

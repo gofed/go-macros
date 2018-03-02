@@ -12,5 +12,5 @@
 %gobuild(o:) go build -compiler gccgo -gccgoflags "$RPM_OPT_FLAGS ${LDFLAGS:-} %__global_ldflags %{?__golang_extldflags}" -a -v -x %{?**};
 
 # Define commands for testing
-%gotest() go test -compiler gccgo -gccgoflags "$RPM_OPT_FLAGS ${LDFLAGS:-} %__global_ldflags %{?__golang_extldflags}" %{?**};
-
+%gotestflags -compiler gccgo -gccgoflags "$RPM_OPT_FLAGS ${LDFLAGS:-} %__global_ldflags %{?__golang_extldflags}"
+%gotest() go test %{gotestflags} %{?**};
