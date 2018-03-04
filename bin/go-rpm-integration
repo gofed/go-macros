@@ -195,7 +195,7 @@ installfile() {
     touch -h      -r "${file}"  "${destdir}/$(basename ${file})"
   fi
   [[ -f "$file" && ! -L "$file" ]] && install -m 0644 -vp  "${file}" "${destdir}/"
-  [[ -f "$file" ||   -L "$file" ]] && echo "${gopath}/src/${goipath}/${file}" >> "${filelist}" || :
+  [[ -f "$file" ||   -L "$file" ]] && echo "\"${gopath}/src/${goipath}/${file}\"" >> "${filelist}" || :
 }
 
 listfiles() {
