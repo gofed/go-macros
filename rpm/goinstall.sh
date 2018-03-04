@@ -66,7 +66,7 @@ GOPATH=$PWD/_build golist \
 	${exts_list} \
 	${ignored} \
 ); do
-	installfile ${file}
+	installfile ./${file}
 done
 # Process user specified resources
 for file in $@; do
