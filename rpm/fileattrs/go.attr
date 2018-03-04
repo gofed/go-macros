@@ -2,12 +2,3 @@
 %__go_flags             path
 %__go_provides          go-rpm-integration               provides --prefix "%{buildroot}" --go-path "%{gopath}" --version "%{?epoch:%{epoch}:}%{version}-%{release}" %{?commit:-a "(commit=%{commit})"} %{?branch:-a "(branch=%{branch})"} %{?tag:-a "(tag=%{tag})"} %{?goprovflags}
 %__go_requires          go-rpm-integration               requires --prefix "%{buildroot}" --go-path "%{gopath}" %{?goreqflags}
-%__go_bundled_path      ^%{gopath}/src/.+/vendor/.+/.*$
-%__go_bundled_magic     ^(.*, )?directory$
-%__go_bundled_flags     magic_and_path
-%__go_bundled_provides  %{_rpmconfigdir}/go-bundled.prov
-%__go_symlink_path      ^%{gopath}/src/.*$
-%__go_symlink_magic     ^(.*, )?(broken )?symbolic link to .*$
-%__go_symlink_flags     magic_and_path
-%__go_symlink_provides  %{_rpmconfigdir}/go-symlink.deps provides --prefix "%{buildroot}" --go-path "%{gopath}" --version "%{?epoch:%{epoch}:}%{version}-%{release}" %{?commit:-a "(commit=%{commit})"} %{?branch:-a "(branch=%{branch})"} %{?tag:-a "(tag=%{tag})"}
-%__go_symlink_requires  %{_rpmconfigdir}/go-symlink.deps requires --prefix "%{buildroot}" --go-path "%{gopath}" --version "%{?epoch:%{epoch}:}%{version}-%{release}"

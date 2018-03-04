@@ -238,7 +238,7 @@ for prov in $(\
          ${golistflags[@]}         \
   ); do
   for index in "${!deco[@]}" ; do
-    echo "golang($prov)${deco[index]}${version}"
+    echo "golang($prov)${deco[index]}${version:+ = ${version}}"
   done
 done
 }
@@ -286,7 +286,6 @@ case $action in
                   for key in "${!attributes[@]}"; do
                     [[ -n "${attributes[$key]}" ]] && deco+=( "($key=${attributes[$key]})" )
                   done
-                  [[ -n ${version} ]] && version=" = ${version}"
                   while read lockfile ; do
                     dir=$(dirname "${lockfile}")
                     provides "${dir#${prefix}${gopath}/src/}"
