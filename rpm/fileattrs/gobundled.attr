@@ -1,0 +1,4 @@
+%__gobundled_path       ^%{gopath}/src/.+/vendor/.+/.*$
+%__gobundled_magic      ^(.*, )?directory$
+%__gobundled_flags      magic_and_path
+%__gobundled_provides   %{_rpmconfigdir}/gobundled.prov

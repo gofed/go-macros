@@ -1,0 +1,5 @@
+%__gosymlink_path       ^%{gopath}/src/.*$
+%__gosymlink_magic      ^(.*, )?(broken )?symbolic link to .*$
+%__gosymlink_flags      magic_and_path
+%__gosymlink_provides   %{_rpmconfigdir}/gosymlink.deps provides --prefix "%{buildroot}" --go-path "%{gopath}" --version "%{?epoch:%{epoch}:}%{version}-%{release}" %{?commit:-a "(commit=%{commit})"} %{?branch:-a "(branch=%{branch})"} %{?tag:-a "(tag=%{tag})"}
+%__gosymlink_requires   %{_rpmconfigdir}/gosymlink.deps requires --prefix "%{buildroot}" --go-path "%{gopath}" --version "%{?epoch:%{epoch}:}%{version}-%{release}"

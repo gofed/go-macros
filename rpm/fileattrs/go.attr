@@ -1,3 +1,4 @@
-%__go_provides          %{_rpmconfigdir}/go.prov --prefix "%{buildroot}" -i %{gobaseipath} %{?__go_additional_ipps} --version "%{?epoch:%{epoch}:}%{version}-%{release}" %{?__go_ignore:%{__go_ignore}} %{?commit:-a "(commit=%{commit})"} %{?branch:-a "(branch=%{branch})"} %{?tag:-a "(tag=%{tag})"}
-%__go_requires          %{_rpmconfigdir}/go.req  --prefix "%{buildroot}" -i %{gobaseipath} %{?__go_additional_ipps} %{?__go_ignore:%{__go_ignore}}
-%__go_path              ^%{gopath}/src/.+/.*$
+%__go_path              ^%{gopath}/src/.+/.goipath$
+%__go_flags             path
+%__go_provides          go-rpm-integration               provides --prefix "%{buildroot}" --go-path "%{gopath}" --version "%{?epoch:%{epoch}:}%{version}-%{release}" %{?commit:-a "(commit=%{commit})"} %{?branch:-a "(branch=%{branch})"} %{?tag:-a "(tag=%{tag})"} %{?goprovflags}
+%__go_requires          go-rpm-integration               requires --prefix "%{buildroot}" --go-path "%{gopath}" %{?goreqflags}
