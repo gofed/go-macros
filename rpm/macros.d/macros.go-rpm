@@ -27,7 +27,7 @@
   %global gobuildpath "$GO_BUILD_PATH"
   if [[ ! -e  "%{gobuildpath}/src/${goipath}" ]] ; then
     install -m 0755 -vd "$(dirname %{gobuildpath}/src/${goipath})"
-    ln -fs "${sourcedir:-$PWD}"    "%{gobuildpath}/src/${goipath}"
+    ln -fs "${sourcedir:-$PWD}"   "%{gobuildpath}/src/${goipath}"
   fi
   cd "%{gobuildpath}/src/${goipath}"
   install -m 0755 -vd _bin
@@ -89,15 +89,6 @@ go-rpm-integration install %{!?-i*:-i %{goipath}} \\
                            %{!?-b*:-b "$PWD/_build"} \\
                            %{?goignoreflags} %{?**}
 }
-
-# Collect md files spread in subdirectories
-%gocollectmd %{expand:
-for mdfile in $(find . -iname '*.md') ; do
-  suffix=$(dirname $mdfile | sed 's+^\./++g' | sed 's+/+·+g')
-  if [[ $suffix != '.' ]] ; then
-    cp -p "$mdfile" "$(echo $(basename $mdfile) | sed 's+\.md$++g')·${suffix}.md"
-  fi
-done}
 
 # Run go test %{gotestflags} on all subdirectories except for those filtered out
 # THIS MACRO IS OPT-OUT.
