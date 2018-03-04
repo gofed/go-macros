@@ -27,7 +27,7 @@
   %global gobuildpath "$GO_BUILD_PATH"
   if [[ ! -e  "%{gobuildpath}/src/${goipath}" ]] ; then
     install -m 0755 -vd "$(dirname %{gobuildpath}/src/${goipath})"
-    ln -fs "$sourcedir"           "%{gobuildpath}/src/${goipath}"
+    ln -fs "${sourcedir:-$PWD}"    "%{gobuildpath}/src/${goipath}"
   fi
   cd "%{gobuildpath}/src/${goipath}"
   install -m 0755 -vd _bin
@@ -63,14 +63,9 @@
 # processing:
 # -d <directory>  a directory, relative to the import path root
 #                 not recursive (subdirectories are not excluded)
-# -D <directory>  a directory, prefixed with the import path root
-#                 not recursive (subdirectories are not excluded)
 # -t <tree root>  a subtree root, relative to the import path root
 #                 recursive (subdirectories are excluded)
-# -T <tree root>  a subtree root, prefixed with the import path root
-#                 recursive (subdirectories are excluded)
 # -r <regexp>     a regexp, relative to the import path root
-# -R <regexp>     a regexp, prefixed with the import path root
 #
 # %%goinstall will generate a file list that can be used in a %%files spec
 # section. The default file list name matches the %%{goname} of the installed
@@ -83,7 +78,7 @@
 #
 # When invoked several times with different file list names, it will attribute
 # directories to the first file list that makes use of them only.
-%goinstall(i:p:g:b:d:D:t:T:r:R:e:s:o:) %{expand:
+%goinstall(i:p:g:b:d:t:r:e:s:o:) %{expand:
 %{!?-o*:%{?-i*:
 %if "%{-i*}" != "%{goipath}"
   %define gofllprefix %gorpmname %{-i*}
@@ -91,7 +86,8 @@
 go-rpm-integration install %{!?-i*:-i %{goipath}} \\
                            %{!?-o*:-o %{?gofllprefix:%{gofllprefix}-}%{gofllname}} \\
                            %{!?-p*:-p %{buildroot}} %{!?-g*:-g %{gopath}} \\
-                           %{!?-b*:-b "$PWD/_build"} %{?**}
+                           %{!?-b*:-b "$PWD/_build"} \\
+                           %{?goignoreflags} %{?**}
 }
 
 # Collect md files spread in subdirectories
@@ -122,17 +118,12 @@ done}
 # processing:
 # -d <directory>  a directory, relative to the import path root
 #                 not recursive (subdirectories are not excluded)
-# -D <directory>  a directory, prefixed with the import path root
-#                 not recursive (subdirectories are not excluded)
 # -t <tree root>  a subtree root, relative to the import path root
 #                 recursive (subdirectories are excluded)
-# -T <tree root>  a subtree root, prefixed with the import path root
-#                 recursive (subdirectories are excluded)
 # -r <regexp>     a regexp, relative to the import path root
-# -R <regexp>     a regexp, prefixed with the import path root
-%gochecks(i:sp:g:wb:d:D:t:T:r:R:) %{expand:
+%gochecks(i:sp:g:wb:d:t:r:) %{expand:
 %{?gotestflags:GO_TEST_FLAGS="%{gotestflags}"} \\
 %{?gotestextldflags:GO_TEST_EXT_LD_FLAGS="%{gotestextldflags}"} \\
 go-rpm-integration check %{!?-i*:-i %{goipath}} %{!?-p*:-p %{buildroot}} \\
-                         %{!?-g*:-g %{gopath}} %{!?-b*:-b "$PWD/_build"} %{?**}
+                         %{!?-g*:-g %{gopath}} %{!?-b*:-b "$PWD/_build"} %{?goignoreflags} %{?**}
 }

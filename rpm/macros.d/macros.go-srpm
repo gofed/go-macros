@@ -161,6 +161,6 @@ if (rpm.expand("%{?-i}") ~= "") then
   rpm.expand("%{echo:  gourl:           %{?gourl}}")
   rpm.expand("%{echo:  gosource:        %{?gosource}}")
 end}
-BuildRequires: go-rpm-macros
+BuildRequires: compiler(go-compiler)
 ExclusiveArch: %{go_arches}
 }
