@@ -208,7 +208,7 @@ for dir in $(\
          ${golistflags[$goipath]}          \
   ) ; do
   pushd "${workroot}/src/${dir}" >/dev/null
-    echo "## Testing \"${workroot}/src/${dir}\""
+    echo "Testing: \"${workroot}/src/${dir}\""
     (set -x ; GOPATH="${GO_BUILD_PATH}:${GOPATH:+${GOPATH}:}${gopath}" \
               go test ${GO_TEST_FLAGS} \
                       -ldflags "${LDFLAGS:+${LDFLAGS} }-extldflags '${GO_TEST_EXT_LD_FLAGS}'")
@@ -250,7 +250,7 @@ case $action in
                   install -m 0755   -vd "${prefix}${gopath}/src"
                   [[ ! -e .goipath ]] && touch .goipath
                   for goipath in ${goipathes[@]} ; do
-                    echo "### Installing ${goipath}"
+                    echo "Installing: ${goipath}"
                     if [[ ! -e  "${GO_BUILD_PATH}/src/${goipath}" ]] ; then
                       install -m 0755 -vd "$(dirname   ${GO_BUILD_PATH}/src/${goipath})"
                       ln -fs "${sourcedir}"           "${GO_BUILD_PATH}/src/${goipath}"
@@ -268,7 +268,7 @@ case $action in
                   [[ ${checkin} == "system" ]] && workroot="${prefix}${gopath}" \
                                                || workroot="${GO_BUILD_PATH}"
                   for goipath in ${goipathes[@]} ; do
-                    echo "### Testing ${goipath}"
+                    echo "Testing: ${goipath}"
                     checks "${goipath}"
                   done ;;
   provides)       deco=( "" )
