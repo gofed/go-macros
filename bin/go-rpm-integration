@@ -154,21 +154,21 @@ while [ $# -gt 0 ] ; do
 done
 
 installfile() {
-goipath="${1}"
-file="${2}"
+local goipath="${1}"
+local file="${2}"
 for proot in "$(realpath -sm ${PWD})" \
              "${gopath}/src/${goipath}" \
              "${prefix}${gopath}/src/${goipath}"; do
   [[ ${file}/ == ${proot}/* ]] && file=".${file#${proot}}"
 done
 file="$(realpath -sm ${file})"
-workdir="$(realpath -sm .)"
+local workdir="$(realpath -sm .)"
 if [[ ${file}/ == ${workdir}/* ]] ; then
-  dest="${prefix}${gopath}/src/${goipath}${file#${workdir}}"
+  local dest="${prefix}${gopath}/src/${goipath}${file#${workdir}}"
 else
-  dest="${prefix}${file}"
+  local dest="${prefix}${file}"
 fi
-destdir="$(dirname ${dest})"
+local destdir="$(dirname ${dest})"
 if [[ ! -d "${destdir}" ]] ; then
   installfile "${goipath}" "${destdir#${prefix}}"
 fi
