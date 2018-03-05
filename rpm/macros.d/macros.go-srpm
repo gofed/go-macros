@@ -139,6 +139,12 @@ local goipath = rpm.expand("%{?goipath}")
 if (goipath == "") then
   rpm.expand("%{error:Please set the Go import path in the “goipath” variable before calling “gometa”!}")
 end
+-- Fall to locally shipped forge macros until they are available in f27+
+-- TODO(jchaloup): Remove once forgemeta is available in f27+
+if (rpm.expand("%{?forgemeta:1}") == "") then
+  rpm.define("forgemeta(u:spvi) %__forgemeta__ %{?**}")
+  rpm.define("forgesetup(a:b:cDn:Tq) %__forgesetup__ %{?**}")
+end
 -- Compute and set spec variables
 if (forgeurl ~= "") then
   rpm.expand("%forgemeta %{?-v} %{?-i} %{?-s} %{?-p} -u " .. forgeurl .. "\\n")
@@ -153,7 +159,7 @@ else
   safeset("gosource", "%{gourl}/%{archivename}.%{archiveext}")
 end
 safeset("goname", "%gorpmname %{goipath}")
-safeset("gosetup", "%forgesetup")
+rpm.define("gosetup(a:b:cDn:Tq) %forgesetup %{?**}")
 -- Final spec variable summary if the macro was called with -i
 if (rpm.expand("%{?-i}") ~= "") then
   rpm.expand("%{echo:Go-specific packaging variables}")
