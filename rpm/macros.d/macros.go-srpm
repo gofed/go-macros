@@ -153,6 +153,7 @@ else
   safeset("gosource", "%{gourl}/%{archivename}.%{archiveext}")
 end
 safeset("goname", "%gorpmname %{goipath}")
+safeset("gosetup", "%forgesetup")
 -- Final spec variable summary if the macro was called with -i
 if (rpm.expand("%{?-i}") ~= "") then
   rpm.expand("%{echo:Go-specific packaging variables}")
