@@ -31,6 +31,7 @@
   fi
   cd "%{gobuildpath}/src/${goipath}"
   install -m 0755 -vd _bin
+  export PATH="${PWD}/_bin${PATH:+:${PATH}}"
   export GOPATH="%{gobuildpath}:%{gopath}"
   export LDFLAGS="${LDFLAGS:-}%{?commit: -X ${goipath}/version.commit=%{commit}}%{?tag: -X ${goipath}/version.tag=%{tag}}%{?version: -X ${goipath}/version=%{version}}"
 }
@@ -113,6 +114,7 @@ go-rpm-integration install %{!?-i*:-i %{goipath}} \\
 #                 recursive (subdirectories are excluded)
 # -r <regexp>     a regexp, relative to the import path root
 %gochecks(i:sp:g:wb:d:t:r:) %{expand:
+PATH="${PWD}/_bin${PATH:+:${PATH}}" \\
 %{?gotestflags:GO_TEST_FLAGS="%{gotestflags}"} \\
 %{?gotestextldflags:GO_TEST_EXT_LD_FLAGS="%{gotestextldflags}"} \\
 go-rpm-integration check %{!?-i*:-i %{goipath}} %{!?-p*:-p %{buildroot}} \\
