@@ -218,7 +218,7 @@ done
 
 provides() {
 goipath="${1}"
-for prov in $(\
+for prov in ${goipath} $(\
   GOPATH="${prefix}${gopath}"      \
   golist --provided                \
 	 --package-path ${goipath} \
