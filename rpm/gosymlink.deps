@@ -99,7 +99,7 @@ provides() {
 # Convert paths within gopath to version-constrained requires
 requires() {
   local package="${1#${prefix}${gopath}/src/}"
-  echo "golang(${package})${version:+ = ${version}}"
+  echo "golang-ipp(${package})${version:+ = ${version}}"
 }
 
 # Resolve a symlink target in presence of a build root
@@ -146,16 +146,13 @@ processlink() {
                 find "${linktarget}" -type l -print | while read sublink ; do
                   processlink "${link}${sublink#${linktarget}}" "${sublink}"
                 done ;;
-      requires) # Requires is not recursive — it relies on providers requiring their own needs
-                find "${nexttarget}" -type d -print | while read subdir ; do
-                  requires   "${subdir}"
+      requires) while [[      "${linktarget}" != "${prefix}${gopath}/src" && \
+                         ! -e "${linktarget}/.ipp" ]] ; do
+                  linktarget=$(dirname ${linktarget})
                 done
-                find "${nexttarget}" -type l -print | while read sublink ; do
-                  if isgopathdir $(ultimateresolvelink "${sublink}") ; then
-                  # The owner of the link will declare the correct requires
-                    requires "${sublink}"
-                  fi
-                done ;;
+                if [[ -e "${linktarget}/.ipp" ]] ; then
+                  requires "${linktarget}"
+                fi ;;
     esac
   fi
 }

@@ -216,17 +216,24 @@ for dir in $(\
 done
 }
 
+fullprovides(){
+  namespace=${1}
+  prov=${2}
+  for index in "${!deco[@]}" ; do
+    echo "${namespace}(${prov})${deco[index]}${version:+ = ${version}}"
+  done
+}
+
 provides() {
 goipath="${1}"
+fullprovides golang-ipp "${goipath}"
 for prov in $(\
   GOPATH="${prefix}${gopath}"      \
   golist --provided                \
 	 --package-path ${goipath} \
          ${golistflags[$goipath]}         \
   ); do
-  for index in "${!deco[@]}" ; do
-    echo "golang($prov)${deco[index]}${version:+ = ${version}}"
-  done
+  fullprovides golang "${prov}"
 done
 }
 
@@ -248,16 +255,15 @@ case $action in
   install)        [[ ${#goipathes[@]} -eq 0 ]] && exit 0
                   otherfiles=( $* )
                   install -m 0755   -vd "${prefix}${gopath}/src"
-                  [[ ! -e .goipath ]] && touch .goipath
                   for goipath in ${goipathes[@]} ; do
                     if [[ ! -e  "${GO_BUILD_PATH}/src/${goipath}" ]] ; then
                       install -m 0755 -vd "$(dirname   ${GO_BUILD_PATH}/src/${goipath})"
                       ln -fs "${sourcedir}"           "${GO_BUILD_PATH}/src/${goipath}"
                     fi
                     pushd "${GO_BUILD_PATH}/src/${goipath}" >/dev/null
-                      [[ ! -e .goipath ]] && touch .goipath
+                      [[ ! -e .ipp ]] && touch .ipp
                       golistfiles=$(listfiles "${goipath}")
-                      for file in ${golistfiles[@]} ${otherfiles[@]} .goipath ; do
+                      for file in ${golistfiles[@]} ${otherfiles[@]} .ipp ; do
                         installfile "${goipath}" "${file}"
                       done
                     popd >/dev/null
