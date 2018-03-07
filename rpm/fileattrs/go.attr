@@ -1,4 +1,4 @@
 %__go_path              ^%{gopath}/src/.+/.goipath$
 %__go_flags             path
-%__go_provides          go-rpm-integration               provides %{?goipath:-i "%{goipath}"} --prefix "%{buildroot}" --go-path "%{gopath}" --version "%{?epoch:%{epoch}:}%{version}-%{release}" %{?commit:-a "(commit=%{commit})"} %{?branch:-a "(branch=%{branch})"} %{?tag:-a "(tag=%{tag})"} %{?goprovflags}%{!?goprovflags:%{?goignoreflags}}
-%__go_requires          go-rpm-integration               requires %{?goipath:-i "%{goipath}"} --prefix "%{buildroot}" --go-path "%{gopath}" %{?goreqflags}%{!?goprovflags:%{?goignoreflags}}
+%__go_provides          go-rpm-integration               provides %{?goipath:-i "%{goipath}"} --prefix "%{buildroot}" --go-path "%{gopath}" --version "%{?epoch:%{epoch}:}%{version}-%{release}" %{?commit:-a "(commit=%{commit})"} %{?branch:-a "(branch=%{branch})"} %{?tag:-a "(tag=%{tag})"} %{?goprovflags}
+%__go_requires          go-rpm-integration               requires %{?goipath:-i "%{goipath}"} --prefix "%{buildroot}" --go-path "%{gopath}" %{?goreqflags}
