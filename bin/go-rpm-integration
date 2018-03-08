@@ -95,6 +95,7 @@ GO_BUILD_PATH="${GO_BUILD_BATH:-${PWD}/_build}"
 gopath=/usr/share/gocode
 filelist='devel.file-list'
 goipathes=()
+_last_goipath=''
 declare -A attributes
 declare -A golistflags
 
@@ -123,8 +124,6 @@ then
 fi
 
 eval set -- "$options"
-
-_last_goipath=''
 
 while [ $# -gt 0 ] ; do
   case $1 in
@@ -155,45 +154,49 @@ while [ $# -gt 0 ] ; do
 done
 
 installfile() {
-  goipath="${1}"
-  file="${2}"
-  file="${file#./}"
-  [[ -d "${file}" && ! -L "${file}" ]] && srcdir="${file}" || srcdir=$(dirname "${file}")
-  destdir="${prefix}${gopath}/src/${goipath}/${srcdir}"
-  destdir="${destdir%/.}"
-  dir="${destdir}"
-  dirs=()
-  while [[ ! -e "${dir}" ]] ; do
-    dirs=("$dir" "${dirs[@]}")
-    dir=$(dirname "${dir}")
-  done
-  for dir in "${dirs[@]}" ; do
-    install -m 0755 -vd "${dir}"
-    if $(echo "${dir}" | grep -q "^${prefix}${gopath}/src/${goipath}") ; then
-      touch -r             ".${dir#${prefix}${gopath}/src/${goipath}}" "${dir}"
-    fi
-    echo "%dir \"${dir#${prefix}}\"" >> ${filelist}
-  done
-  if [[ -L "$file" ]] ; then
-    ln -s $(readlink "${file}") "${destdir}/$(basename ${file})"
-    touch -h      -r "${file}"  "${destdir}/$(basename ${file})"
+local goipath="${1}"
+local file="${2}"
+for proot in "$(realpath -sm ${PWD})" \
+             "${gopath}/src/${goipath}" \
+             "${prefix}${gopath}/src/${goipath}"; do
+  [[ ${file}/ == ${proot}/* ]] && file=".${file#${proot}}"
+done
+file="$(realpath -sm ${file})"
+local workdir="$(realpath -sm .)"
+if [[ ${file}/ == ${workdir}/* ]] ; then
+  local dest="${prefix}${gopath}/src/${goipath}${file#${workdir}}"
+else
+  local dest="${prefix}${file}"
+fi
+local destdir="$(dirname ${dest})"
+if [[ ! -d "${destdir}" ]] ; then
+  installfile "${goipath}" "${destdir#${prefix}}"
+fi
+if [[ (! -e $file) || (-d "${file}" && ! -L "${file}") ]] ; then
+  install -m 0755 -vd "${dest}"
+  if [[ -d "${file}" && ! -L "${file}" ]] ; then
+    find "${file}" -iname '*.md' -type f -maxdepth 1 | while read docfile ; do
+      installfile "${goipath}" "${docfile}"
+    done
   fi
-  [[ -f "$file" && ! -L "$file" ]] && install -m 0644 -vp  "${file}" "${destdir}/"
-  [[ -f "$file" ||   -L "$file" ]] && echo "\"${gopath}/src/${goipath}/${file}\"" >> "${filelist}" || :
+  local fllprefix="%dir"
+else
+  if [[ -L "${file}" ]] ; then
+    ln -s    $(readlink "${file}") "${dest}"
+    touch -h -r         "${file}"  "${dest}"
+  else
+    install -m 0644 -vp "${file}"  "${dest}"
+  fi
+  [[ "${file}" == *.md ]] && local fllprefix="%doc"
+fi
+echo "${fllprefix:+${fllprefix} }\"${dest#${prefix}}\"" >> "${filelist}"
 }
 
 listfiles() {
 goipath="${1}"
-for file in $(\
-  GOPATH="${GO_BUILD_PATH}"        \
-  golist --to-install              \
-         --package-path ${goipath} \
-         ${golistflags[${goipath}]}
-  ); do
-  # The import path root does not end in /
-  file="${file##${GO_BUILD_PATH}/src/${goipath}}"
-  echo "${file##/}"
-done
+echo $(GOPATH="${GO_BUILD_PATH}" golist --to-install \
+                                        --package-path ${goipath} \
+                                        ${golistflags[${goipath}]})
 }
 
 checks() {
@@ -213,17 +216,24 @@ for dir in $(\
 done
 }
 
+fullprovides(){
+  namespace=${1}
+  prov=${2}
+  for index in "${!deco[@]}" ; do
+    echo "${namespace}(${prov})${deco[index]}${version:+ = ${version}}"
+  done
+}
+
 provides() {
 goipath="${1}"
+fullprovides golang-ipp "${goipath}"
 for prov in $(\
   GOPATH="${prefix}${gopath}"      \
   golist --provided                \
 	 --package-path ${goipath} \
          ${golistflags[$goipath]}         \
   ); do
-  for index in "${!deco[@]}" ; do
-    echo "golang($prov)${deco[index]}${version:+ = ${version}}"
-  done
+  fullprovides golang "${prov}"
 done
 }
 
@@ -245,7 +255,6 @@ case $action in
   install)        [[ ${#goipathes[@]} -eq 0 ]] && exit 0
                   otherfiles=( $* )
                   install -m 0755   -vd "${prefix}${gopath}/src"
-                  [[ ! -e .goipath ]] && touch .goipath
                   for goipath in ${goipathes[@]} ; do
                     echo "Installing: ${goipath}"
                     if [[ ! -e  "${GO_BUILD_PATH}/src/${goipath}" ]] ; then
@@ -253,9 +262,9 @@ case $action in
                       ln -fs "${sourcedir}"           "${GO_BUILD_PATH}/src/${goipath}"
                     fi
                     pushd "${GO_BUILD_PATH}/src/${goipath}" >/dev/null
-                      [[ ! -e .goipath ]] && touch .goipath
+                      [[ ! -e .ipp ]] && touch .ipp
                       golistfiles=$(listfiles "${goipath}")
-                      for file in ${golistfiles[@]} ${otherfiles[@]} .goipath ; do
+                      for file in ${golistfiles[@]} ${otherfiles[@]} .ipp ; do
                         installfile "${goipath}" "${file}"
                       done
                     popd >/dev/null
