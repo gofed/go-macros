@@ -8,6 +8,39 @@
 # The macros necessary at %%setup and srpm stage are in the sister file
 # macros.go-srpm
 
+# Default filtering policy
+# Complete or replace the following variables in your spec file if this policy
+# does not apply to your project
+
+# Flags to filter examples
+# The average Go project example code is incomplete and obsolete. It will
+# fail to compile as-is, or even panic. It will poison the dependency
+# generator with bogus or legacy import path requirements. Even when it it
+# clean and up to date, it will require many third party components not needed
+# in production. Therefore:
+# – never install Go project example code in %%{gopath}. Publish is as %%doc.
+# — ask politely projects that publish example code in some other directory
+#   than _examples to rename it.
+# – never rely on third party examples being available or working in another
+#   project. This is *not* production code. Ask upstreams politely to remove
+#   tests or code that import other project examples.
+%goignoreflags_examples -r '.*example.*'
+
+# Default flags to apply in all stages
+%godefaultflags %{goignoreflags_examples}
+
+# Default flags to apply in Go install (%%goinstall)
+%goinstallflags %{godefaultflags}
+
+# Default flags to apply in Go checks (%%gochecks)
+%gochecksflags  %{godefaultflags}
+
+# Default flags to apply in Go autoprovides
+%goprovflags    %{godefaultflags}
+
+# Default flags to apply in Go autorequires
+%goreqflags     %{godefaultflags}
+
 # Create a local Go build root
 #
 # The -i <go import path> allows working on another import path than the
@@ -88,7 +121,7 @@ go-rpm-integration install %{!?-i*:-i %{goipath}} \\
                            %{!?-o*:-o %{?gofllprefix:%{gofllprefix}-}%{gofllname}} \\
                            %{!?-p*:-p %{buildroot}} %{!?-g*:-g %{gopath}} \\
                            %{!?-b*:-b "$PWD/_build"} \\
-                           %{?goignoreflags} %{?**}
+                           %{?goinstallflags} %{?**}
 }
 
 # Collect md files spread in subdirectories
@@ -127,5 +160,5 @@ PATH="${PWD}/_bin${PATH:+:${PATH}}" \\
 %{?gotestflags:GO_TEST_FLAGS="%{gotestflags}"} \\
 %{?gotestextldflags:GO_TEST_EXT_LD_FLAGS="%{gotestextldflags}"} \\
 go-rpm-integration check %{!?-i*:-i %{goipath}} %{!?-p*:-p %{buildroot}} \\
-                         %{!?-g*:-g %{gopath}} %{!?-b*:-b "$PWD/_build"} %{?goignoreflags} %{?**}
+                         %{!?-g*:-g %{gopath}} %{!?-b*:-b "$PWD/_build"} %{?gochecksflags} %{?**}
 }
