@@ -213,17 +213,24 @@ for dir in $(\
 done
 }
 
+fullprovides(){
+  namespace=${1}
+  prov=${2}
+  for index in "${!deco[@]}" ; do
+    echo "${namespace}(${prov})${deco[index]}${version:+ = ${version}}"
+  done
+}
+
 provides() {
 goipath="${1}"
+fullprovides golang-ipath "${goipath}"
 for prov in $(\
   GOPATH="${prefix}${gopath}"      \
   golist --provided                \
 	 --package-path ${goipath} \
          ${golistflags[$goipath]}         \
   ); do
-  for index in "${!deco[@]}" ; do
-    echo "golang($prov)${deco[index]}${version:+ = ${version}}"
-  done
+  fullprovides golang "${prov}"
 done
 }
 
@@ -245,7 +252,6 @@ case $action in
   install)        [[ ${#goipathes[@]} -eq 0 ]] && exit 0
                   otherfiles=( $* )
                   install -m 0755   -vd "${prefix}${gopath}/src"
-                  [[ ! -e .goipath ]] && touch .goipath
                   for goipath in ${goipathes[@]} ; do
                     echo "Installing: ${goipath}"
                     if [[ ! -e  "${GO_BUILD_PATH}/src/${goipath}" ]] ; then
