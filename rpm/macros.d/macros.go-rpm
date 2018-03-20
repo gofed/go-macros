@@ -121,7 +121,7 @@ go-rpm-integration install %{!?-i*:-i %{goipath}} \\
                            %{!?-o*:-o %{?gofllprefix:%{gofllprefix}-}%{gofllname}} \\
                            %{!?-p*:-p %{buildroot}} %{!?-g*:-g %{gopath}} \\
                            %{!?-b*:-b "$PWD/_build"} \\
-                           %{?goinstallflags} %{?**}
+                           %{?**} %{?goinstallflags}
 }
 
 # Run go test %{gotestflags} on all subdirectories except for those filtered out
@@ -151,5 +151,5 @@ PATH="${PWD}/_bin${PATH:+:${PATH}}" \\
 %{?gotestflags:GO_TEST_FLAGS="%{gotestflags}"} \\
 %{?gotestextldflags:GO_TEST_EXT_LD_FLAGS="%{gotestextldflags}"} \\
 go-rpm-integration check %{!?-i*:-i %{goipath}} %{!?-p*:-p %{buildroot}} \\
-                         %{!?-g*:-g %{gopath}} %{!?-b*:-b "$PWD/_build"} %{?gochecksflags} %{?**}
+                         %{!?-g*:-g %{gopath}} %{!?-b*:-b "$PWD/_build"} %{?**} %{?gochecksflags}
 }
