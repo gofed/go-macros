@@ -134,8 +134,10 @@ while [ $# -gt 0 ] ; do
     -g|--go-path)                   gopath="$2"                  ; shift;;
     -w|--workdir-files)             checkin="workdir"                   ;;
     -b|--go-build-path)             GO_BUILD_PATH="$2"           ; shift;;
-    -d|--ignore-directory)          dir="${_last_goipath}/$2"; golistflags[$_last_goipath]="${golistflags[$_last_goipath]} -d ${dir%/.}" ; shift;;
-    -t|--ignore-tree)               golistflags[$_last_goipath]="${golistflags[$_last_goipath]} -t ${_last_goipath}/$2" ; shift;;
+    -d|--ignore-directory)          _dir="${_last_goipath}/${2##${_last_goipath}/}"
+                                    golistflags[$_last_goipath]="${golistflags[$_last_goipath]} -d ${_dir%/.}" ; shift;;
+    -t|--ignore-tree)               _tree="${_last_goipath}/${2##${_last_goipath}/}"
+                                    golistflags[$_last_goipath]="${golistflags[$_last_goipath]} -t ${_tree}" ; shift;;
     -r|--ignore-regex)              golistflags[$_last_goipath]="${golistflags[$_last_goipath]} -r $2" ; shift;;
     -e|--include-extension)         golistflags[$_last_goipath]="${golistflags[$_last_goipath]} -e $2" ; shift;;
     -s|--source-dir)                sourcedir="$2"               ; shift;;
