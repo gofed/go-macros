@@ -182,7 +182,7 @@ if [[ (! -e $file) || (-d "${file}" && ! -L "${file}") ]] ; then
   local fllprefix="%dir"
 else
   if [[ -L "${file}" ]] ; then
-    ln -s    $(readlink "${file}") "${dest}"
+    ln -vs   $(readlink "${file}") "${dest}"
     touch -h -r         "${file}"  "${dest}"
   else
     install -m 0644 -vp "${file}"  "${dest}"
@@ -259,7 +259,7 @@ case $action in
                     echo "Installing: ${goipath}"
                     if [[ ! -e  "${GO_BUILD_PATH}/src/${goipath}" ]] ; then
                       install -m 0755 -vd "$(dirname   ${GO_BUILD_PATH}/src/${goipath})"
-                      ln -fs "${sourcedir}"           "${GO_BUILD_PATH}/src/${goipath}"
+                      ln -vfs "${sourcedir}"          "${GO_BUILD_PATH}/src/${goipath}"
                     fi
                     pushd "${GO_BUILD_PATH}/src/${goipath}" >/dev/null
                       [[ ! -e .goipath ]] && touch .goipath
