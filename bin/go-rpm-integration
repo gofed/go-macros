@@ -175,7 +175,7 @@ fi
 if [[ (! -e $file) || (-d "${file}" && ! -L "${file}") ]] ; then
   install -m 0755 -vd "${dest}"
   if [[ -d "${file}" && ! -L "${file}" ]] ; then
-    find "${file}" -iname '*.md' -type f -maxdepth 1 | while read docfile ; do
+    find "${file}" -maxdepth 1 -iname '*.md' -type f | while read docfile ; do
       installfile "${goipath}" "${docfile}"
     done
   fi
