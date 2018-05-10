@@ -23,6 +23,7 @@ arguments are optional.
 “install”-specific arguments:
 
 -i <go import path>  is a mandatory argument
+-c <hexsha>          add commit line into the .goipath
 -e <extension>       add files ending in <extension> to the default
                      installation set,
                      can be specified several times
@@ -94,6 +95,7 @@ sourcedir="${PWD}"
 GO_BUILD_PATH="${GO_BUILD_BATH:-${PWD}/_build}"
 gopath=/usr/share/gocode
 filelist='devel.file-list'
+commit=''
 goipathes=()
 _last_goipath=''
 declare -A attributes
@@ -109,7 +111,7 @@ fi
 
 shift
 
-if ! options=$(getopt -n $0 -o hi:yp:g:wb:d:t:r:e:o:v:a: \
+if ! options=$(getopt -n $0 -o hi:yp:g:wb:d:t:r:e:o:v:a:c: \
                       -l help,go-import-path: \
                       -l system-files,prefix:,go-path: \
                       -l workdir-files,go-build-path: \
@@ -118,6 +120,7 @@ if ! options=$(getopt -n $0 -o hi:yp:g:wb:d:t:r:e:o:v:a: \
                       -l ignore-regex: \
                       -l include-extension:,output: \
                       -l version:,attribute: \
+                      -l commit: \
                       -- "$@")
 then
     usage
@@ -129,6 +132,7 @@ while [ $# -gt 0 ] ; do
   case $1 in
     -h|--help)                      usage                               ;;
     -i|--go-import-path)            goipathes+=( "$2" ); _last_goipath="${2}"          ; shift;;
+    -c|--commit)                    commit="$2"                  ; shift;;
     -y|--system-files)              checkin="system"                    ;;
     -p|--prefix)                    prefix=$(realpath -sm "$2")  ; shift;;
     -g|--go-path)                   gopath="$2"                  ; shift;;
@@ -262,11 +266,17 @@ case $action in
                       ln -vfs "${sourcedir}"          "${GO_BUILD_PATH}/src/${goipath}"
                     fi
                     pushd "${GO_BUILD_PATH}/src/${goipath}" >/dev/null
+                      # This needs to be the only place where the .goipath
+                      # file is created and/or modified
                       [[ ! -e .goipath ]] && touch .goipath
+                      echo "---" >> .goipath
+                      echo "metadata:" >> .goipath
+                      echo "  commit: ${commit}" >> .goipath
                       golistfiles=$(listfiles "${goipath}")
                       for file in ${golistfiles[@]} ${otherfiles[@]} .goipath ; do
                         installfile "${goipath}" "${file}"
                       done
+                      rm .goipath
                     popd >/dev/null
                   done
                   sort -u -o "${filelist}" "${filelist}" ;;

@@ -112,7 +112,7 @@
 #
 # When invoked several times with different file list names, it will attribute
 # directories to the first file list that makes use of them only.
-%goinstall(i:p:g:b:d:t:r:e:s:o:) %{expand:
+%goinstall(i:p:g:b:d:t:r:e:s:o:c:) %{expand:
 %{!?-o*:%{?-i*:
 %if "%{-i*}" != "%{goipath}"
   %define gofllprefix %gorpmname %{-i*}
@@ -121,6 +121,7 @@ go-rpm-integration install %{!?-i*:-i %{goipath}} \\
                            %{!?-o*:-o %{?gofllprefix:%{gofllprefix}-}%{gofilelist}} \\
                            %{!?-p*:-p %{buildroot}} %{!?-g*:-g %{gopath}} \\
                            %{!?-b*:-b "$PWD/_build"} \\
+                           %{!?-c*:%{?commit:-c %{commit}}%{!?commit:%{?gcommit:-c %{gcommit}}}}  \\
                            %{?**} %{?goinstallflags}
 }
 
