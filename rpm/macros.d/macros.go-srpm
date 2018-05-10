@@ -30,6 +30,10 @@ local goname = rpm.expand("%1")
 goname       = string.lower(goname .. "/")
 -- remove eventual protocol prefix
 goname       = string.gsub(goname, "^http(s?)://",         "")
+-- remove eventual .git suffix
+goname       = string.gsub(goname, "%.git/*",              "")
+-- remove eventual git. prefix
+goname       = string.gsub(goname, "^git%.",              "")
 -- add golang prefix
 goname       = "golang-" .. goname
 -- remove FQDN root (.com, .org, etc)
@@ -48,7 +52,6 @@ goname       = string.gsub(goname, "%-for%-go%-",          "-")
 local result = ""
 local tokens = {}
 tokens["go"]     = true
-tokens["git"]    = true
 for token in string.gmatch(goname, "[^%-]+") do
    if not tokens[token] then
       result = result .. "-" .. token
