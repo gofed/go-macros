@@ -268,10 +268,12 @@ case $action in
                     pushd "${GO_BUILD_PATH}/src/${goipath}" >/dev/null
                       # This needs to be the only place where the .goipath
                       # file is created and/or modified
-                      [[ ! -e .goipath ]] && touch .goipath
-                      echo "---" >> .goipath
-                      echo "metadata:" >> .goipath
-                      echo "  commit: ${commit}" >> .goipath
+                      ippgoipathfile=.$(echo "${goipath}" | sed "s/[/.]/-/g")-goipath
+                      [[ ! -e ${ippgoipathfile} ]] && touch ${ippgoipathfile}
+                      grep -x -- "---" ${ippgoipathfile} || echo "---" >> ${ippgoipathfile}
+                      grep -x -- "metadata:" ${ippgoipathfile} || echo "metadata:" >> ${ippgoipathfile}
+                      grep -x -- "  commit:.*" ${ippgoipathfile} || echo "  commit: ${commit}" >> ${ippgoipathfile}
+                      cp ${ippgoipathfile} .goipath
                       golistfiles=$(listfiles "${goipath}")
                       for file in ${golistfiles[@]} ${otherfiles[@]} .goipath ; do
                         installfile "${goipath}" "${file}"
