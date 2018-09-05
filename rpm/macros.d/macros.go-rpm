@@ -112,17 +112,33 @@
 #
 # When invoked several times with different file list names, it will attribute
 # directories to the first file list that makes use of them only.
-%goinstall(i:p:g:b:d:t:r:e:s:o:) %{expand:
-%{!?-o*:%{?-i*:
-%if "%{-i*}" != "%{goipath}"
-  %define gofllprefix %gorpmname %{-i*}
-%endif}}
-go-rpm-integration install %{!?-i*:-i %{goipath}} \\
-                           %{!?-o*:-o %{?gofllprefix:%{gofllprefix}-}%{gofilelist}} \\
-                           %{!?-p*:-p %{buildroot}} %{!?-g*:-g %{gopath}} \\
-                           %{!?-b*:-b "$PWD/_build"} \\
-                           %{?**} %{?goinstallflags}
-}
+%goinstall(i:p:g:b:d:t:r:e:s:o:) %{expand:%{lua:
+local  maingoipath = rpm.expand("%{goipath}")
+local othergoipath = rpm.expand("%{?-i*}")
+local       output = rpm.expand("%{?-o*}")
+local    sourcedir = rpm.expand("%{?-s*}")
+local    buildpath = rpm.expand("%{?-b*}")
+local outputprefix = ""
+if    (sourcedir == "") then sourcedir = "${PWD}" end
+if    (buildpath == "") then buildpath = "${PWD}/_build" end
+if (othergoipath ~= "") then
+  outputprefix = rpm.expand("%gorpmname " .. othergoipath) .. "-"
+  local i
+  local subdir
+  subdir, i = string.gsub(othergoipath, "^" .. maingoipath, "")
+  if (i == 1) then sourcedir = sourcedir .. subdir end
+end
+if (othergoipath == "") then othergoipath = maingoipath end
+if       (output == "") then output = outputprefix .. rpm.expand("%{gofilelist}") end
+local command = 'go-rpm-integration install'
+command = command .. ' -i ' .. othergoipath
+command = command .. ' %{?**}'
+command = command .. ' -s ' .. sourcedir
+command = command .. ' -b ' .. buildpath
+command = command .. ' -o ' .. output
+command = command .. ' %{!?-p*:-p %{buildroot}} %{!?-g*:-g %{gopath}}'
+command = command .. ' %{?goinstallflags}'
+print(command)}}
 
 # Run go test %{gotestflags} on all subdirectories except for those filtered out
 # THIS MACRO IS OPT-OUT.

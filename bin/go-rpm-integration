@@ -109,7 +109,7 @@ fi
 
 shift
 
-if ! options=$(getopt -n $0 -o hi:yp:g:wb:d:t:r:e:o:v:a: \
+if ! options=$(getopt -n $0 -o hi:yp:g:wb:d:t:r:e:s:o:v:a: \
                       -l help,go-import-path: \
                       -l system-files,prefix:,go-path: \
                       -l workdir-files,go-build-path: \
@@ -226,12 +226,14 @@ fullprovides(){
 
 provides() {
 goipath="${1}"
+lockfile="${2}"
 fullprovides golang-ipath "${goipath}"
 for prov in $(\
   GOPATH="${prefix}${gopath}"      \
   golist --provided                \
-	 --package-path ${goipath} \
-         ${golistflags[$goipath]}         \
+         --package-path ${goipath} \
+         $(cat "${lockfile}")      \
+         ${golistflags[$goipath]}  \
   ); do
   fullprovides golang "${prov}"
 done
@@ -239,12 +241,14 @@ done
 
 requires() {
 goipath="${1}"
+lockfile="${2}"
 for req in $(\
   GOPATH="${prefix}${gopath}"      \
   golist --imported                \
-	 --package-path ${goipath} \
-	 --skip-self               \
-         ${golistflags[$goipath]}         \
+         --package-path ${goipath} \
+         --skip-self               \
+         $(cat "${lockfile}")      \
+         ${golistflags[$goipath]}  \
   ); do
   echo "golang($req)"
 done
@@ -254,17 +258,32 @@ done
 case $action in
   install)        [[ ${#goipathes[@]} -eq 0 ]] && exit 0
                   otherfiles=( $* )
+                  filelist="${PWD}/${filelist}"
                   install -m 0755   -vd "${prefix}${gopath}/src"
                   for goipath in ${goipathes[@]} ; do
                     echo "Installing: ${goipath}"
-                    if [[ ! -e  "${GO_BUILD_PATH}/src/${goipath}" ]] ; then
-                      install -m 0755 -vd "$(dirname   ${GO_BUILD_PATH}/src/${goipath})"
-                      ln -vfs "${sourcedir}"          "${GO_BUILD_PATH}/src/${goipath}"
+                    fakepath="${GO_BUILD_PATH}/src/${goipath}"
+                    fakeroot=$(dirname ${fakepath})
+                    if [[ ! -d ${fakeroot} ]] ; then
+                      install -m 0755 -vd "${fakeroot}"
+                    else
+                      symdir="${fakeroot}"
+                      until [[ -h "${symdir}" || \
+                                  "${symdir}" == "${GO_BUILD_PATH}/src" ]] ; do
+                        symdir=$(dirname ${symdir})
+                      done
+                      # The root exists but none of the parents is a symlink
+                      # → someone goinstalled a Go subpackage before
+                      # → the conflicting path can be removed without affecting
+                      # project sources
+                      [[ "${symdir}" == "${GO_BUILD_PATH}/src" ]] && rm -fr "${fakepath}"
                     fi
+                    [[ ! -d ${fakepath} ]] && ln -fs "${sourcedir}" "${fakepath}"
                     pushd "${GO_BUILD_PATH}/src/${goipath}" >/dev/null
-                      [[ ! -e .goipath ]] && touch .goipath
-                      golistfiles=$(listfiles "${goipath}")
-                      for file in ${golistfiles[@]} ${otherfiles[@]} .goipath ; do
+                      echo "${golistflags[$goipath]}" > .goflags
+                      touch -r "${sourcedir}" .goipath .goflags
+                      for file in .goipath .goflags \
+                                  $(listfiles "${goipath}") ${otherfiles[@]} ; do
                         installfile "${goipath}" "${file}"
                       done
                     popd >/dev/null
@@ -283,10 +302,10 @@ case $action in
                   done
                   while read lockfile ; do
                     dir=$(dirname "${lockfile}")
-                    provides "${dir#${prefix}${gopath}/src/}"
+                    provides "${dir#${prefix}${gopath}/src/}" "${lockfile%%\.goipath}.goflags"
                   done ;;
   requires)       while read lockfile ; do
                     dir=$(dirname "${lockfile}")
-                    requires "${dir#${prefix}${gopath}/src/}"
+                    requires "${dir#${prefix}${gopath}/src/}" "${lockfile%%\.goipath}.goflags"
                   done ;;
 esac
