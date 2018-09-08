@@ -77,11 +77,14 @@ print(result)
 #
 # The following spec variables SHOULD be set before calling the macro:
 #
-#   forgeurl  the project url on the forge, strongly recommended, if it can not
-#             be deduced from goipath; alternatively, use -u <url>
+#   forgeurl  the project url on the forge,
+#             if it can not be deduced from goipath
 #   Version   if applicable, set it with Version: <version>
 #   tag       if applicable
 #   commit    if applicable
+#   date      if applicable (to override the mtime of the Source archive)
+#
+#  Use -z for multiple calls to the macro
 #
 # The macro will attempt to compute and set the following variables if they are
 # not already set by the packager:
@@ -110,60 +113,90 @@ print(result)
 # wish %{dist} to be changed.
 #
 # Optional parameters:
-#   -u <url>  Ignore forgeurl even if it exists and use <url> instead. Note
-#             that the macro will still end up setting <url> as the forgeurl
-#             spec variable if it manages to parse it.
+#   -z <number> suffix all the read and written variable names with <number>
+#               for example read     goipath<number>, version<number>…
+#                       and generate goname<number>, archiveurl<number>…
+#               Usage is similar to the -b %%setup argument
+#               The macro assumes that null or nil suffix is used for the primary
+#               package source.
 #   -s  Silently ignore problems in forgeurl, use it if it can be parsed,
 #       ignore it otherwise.
-#   -p  Restore problem handling, override -s.
 #   -v  Be verbose and print every spec variable the macro sets.
 #   -i  Print some info about the state of spec variables the macro may use or
 #       set at the end of the processing.
-%gometa(u:spvi) %{expand:%{lua:
-local forgeurl    = rpm.expand("%{?-u*}")
-if (forgeurl == "") then
-  forgeurl        = rpm.expand("%{?forgeurl}")
+%gometa(z:svi) %{expand:%{lua:
+local suffix      = rpm.expand("%{?-z*}")
+local verbose     = false
+local informative = false
+if (rpm.expand("%{?-v}") ~= "") then
+  verbose         = true
+end
+if (rpm.expand("%{?-i}") ~= "") then
+  informative     = true
 end
 -- Be explicit about the spec variables we’re setting
-local function explicitset(rpmvariable,value)
-  rpm.define(rpmvariable .. " " .. value)
-  if (rpm.expand("%{?-v}") ~= "") then
-    rpm.expand("%{echo:Setting %%{" .. rpmvariable .. "} = " .. value .. "\\n}")
+local function explicitset(rpmvar,value)
+  rpm.define(rpmvar .. " " .. value)
+  if verbose then
+    rpm.expand("%{echo:Setting %%{" .. rpmvar .. "} = " .. value .. "}")
   end
 end
 -- Never ever stomp on a spec variable the packager already set
-local function safeset(rpmvariable,value)
-  if (rpm.expand("%{?" .. rpmvariable .. "}") == "") then
-    explicitset(rpmvariable,value)
+local function safeset(rpmvar,value)
+  if (rpm.expand("%{?" .. rpmvar .. "}") == "") then
+    explicitset(rpmvar,value)
   end
 end
+-- Convenience aliasing of no suffix and zero suffix of a list of rpm variables
+local function zalias(rpmvars)
+  if (suffix == "") or (suffix == "0") then
+    for _, sfx in ipairs({{"","0"},{"0",""}}) do
+      for _, rpmvar in ipairs(rpmvars) do
+        local toalias = "%{?" .. rpmvar .. sfx[1] .. "}"
+        if (rpm.expand(toalias) ~= "") then
+          safeset(rpmvar .. sfx[2], toalias)
+        end
+      end
+    end
+  end
+end
+-- Echo the set rpm variables in a list, with suffix
+local function echovars(rpmvars, suffix)
+  for _, rpmvar in ipairs(rpmvars) do
+    rpmvar = rpmvar .. suffix
+    local header = string.sub("  " .. rpmvar .. ":                                               ",1,21)
+    rpm.expand("%{?" .. rpmvar .. ":%{echo:" .. header .. "%{?" .. rpmvar .. "}}}")
+  end
+end
+zalias({"forgeurl","goipath","goname","gourl","gosource"})
+local goipath  = rpm.expand("%{?goipath"  .. suffix .. "}")
 -- All the Go packaging automation relies on goipath being set
-local goipath = rpm.expand("%{?goipath}")
 if (goipath == "") then
-  rpm.expand("%{error:Please set the Go import path in the “goipath” variable before calling “gometa”!}")
+  local msg = "Please set the Go import path in the %%{goipath" .. suffix .. "} variable before calling %%gometa"
+  if (suffix ~= "") then
+    msg = msg .. " -z " .. suffix
+  end
+  rpm.expand("%{error:" .. msg .. "!}")
 end
--- Compute and set spec variables
+local forgeurl = rpm.expand("%{?forgeurl" .. suffix .. "}")
 if (forgeurl ~= "") then
-  rpm.expand("%forgemeta %{?-v} %{?-i} %{?-s} %{?-p} -u " .. forgeurl .. "\\n")
-  safeset("gourl", forgeurl)
+  safeset("gourl"    .. suffix, "%{forgeurl"        .. suffix .. "}")
 else
-  safeset("gourl", "https://" .. goipath)
-  rpm.expand("%forgemeta %{?-v} %{?-i} -s     %{?-p} -u %{gourl}\\n")
+  safeset("gourl"    .. suffix, "https://%{goipath" .. suffix .. "}")
+  safeset("forgeurl" .. suffix, "%{gourl"           .. suffix .. "}")
 end
-if (rpm.expand("%{?forgesource}") ~= "") then
-  safeset("gosource", "%{forgesource}")
+print(rpm.expand("%forgemeta %{?-z} %{?-s} %{?-v} %{?-i}"))
+if (rpm.expand("%{?forgesource" .. suffix .. "}") ~= "") then
+  safeset("gosource" .. suffix, "%{forgesource" .. suffix .. "}")
 else
-  safeset("gosource", "%{gourl}/%{archivename}.%{archiveext}")
+  safeset("gosource" .. suffix, "%{gourl" .. suffix .. "}/%{archivename" .. suffix .. "}.%{archiveext" .. suffix .. "}")
 end
-safeset("goname", "%gorpmname %{goipath}")
-rpm.define("gosetup %forgesetup")
+safeset(  "goname"   .. suffix, "%gorpmname %{goipath" .. suffix .. "}")
+zalias({"forgeurl","goipath","goname","gourl","gosource"})
 -- Final spec variable summary if the macro was called with -i
-if (rpm.expand("%{?-i}") ~= "") then
+if informative then
   rpm.expand("%{echo:Go-specific packaging variables}")
-  rpm.expand("%{echo:  goipath:         %{?goipath}}")
-  rpm.expand("%{echo:  goname:          %{?goname}}")
-  rpm.expand("%{echo:  gourl:           %{?gourl}}")
-  rpm.expand("%{echo:  gosource:        %{?gosource}}")
+  echovars({"goipath","goname","gourl","gosource"}, suffix)
 end}
 BuildRequires: compiler(go-compiler)
 ExclusiveArch: %{go_arches}
