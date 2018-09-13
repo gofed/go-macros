@@ -55,7 +55,7 @@
   %{?-i*:goipath="%{-i*}"}
   %{?-b*:GO_BUILD_PATH="%{-b*}"}
   %{?-s*:sourcedir="%{-s*}"}
-  goipath="${goipath:-%{goipath}}"
+  goipath="${goipath:-%{?goipath}}"
   GO_BUILD_PATH="${GO_BUILD_PATH:-${PWD}/_build}"
   %global gobuildpath "$GO_BUILD_PATH"
   if [[ ! -e  "%{gobuildpath}/src/${goipath}" ]] ; then
